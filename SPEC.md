@@ -70,7 +70,7 @@ files via volume mount. Claude Code does not run inside Docker. There is no conf
       }
     }
   },
-  "postCreateCommand": "pnpm install && pnpm playwright install --with-deps"
+  "postCreateCommand": "pnpm install && bash scripts/install-hooks.sh && pnpm playwright install --with-deps"
 }
 ```
 
@@ -97,11 +97,14 @@ services:
 ### `.devcontainer/Dockerfile`
 
 ```dockerfile
-FROM mcr.microsoft.com/devcontainers/typescript-node:lts
+FROM mcr.microsoft.com/devcontainers/typescript-node:24-bookworm
 RUN apt-get update && apt-get install -y sqlite3
+# corepack is bundled with Node 24; enable it so pnpm is available.
+# The exact pnpm version is pinned via "packageManager" in package.json.
+RUN corepack enable
 ```
 
-### `.env.local.example`
+### `.env.example`
 
 ```
 OLLAMA_BASE_URL=http://host.docker.internal:11434
@@ -109,6 +112,9 @@ MODEL_NAME=gpt-oss:20b
 ```
 
 Copy to `.env.local` and fill in. `.env.local` is gitignored.
+`.env.example` (not `.env.local.example`) is used because `*.LOCAL.*` is a
+gitignore pattern for merge-conflict files; the `.local.` in the name causes
+macOS (case-insensitive filesystem) to exclude it from the repository.
 
 ### SQLite data directory
 
@@ -846,7 +852,7 @@ completing a feature or after a post-commit analysis suggests cleanup is needed.
 project adds *constraints* on top of `/simplify` via the CLAUDE.md constitution
 (don't add behavior, run tests before and after) rather than reimplementing it.
 
-**Hooks** (`PreToolUse` / `PostToolUse`) are bash scripts fired on tool events. They
+**Hooks** (`PreToolUse` / `PostToolUse`) are Node.js scripts fired on tool events. They
 are the hard gates — they run at the Claude Code layer before any skill or agent can
 interfere.
 
@@ -880,17 +886,17 @@ Three hooks work together:
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "bash .claude/hooks/check-commit.sh" }]
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/check-commit.js" }]
       },
       {
         "matcher": "Write|Edit|MultiEdit",
-        "hooks": [{ "type": "command", "command": "bash .claude/hooks/check-tasks-write.sh" }]
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/check-tasks-write.js" }]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "bash .claude/hooks/post-commit.sh" }]
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/post-commit.js" }]
       }
     ]
   },
@@ -903,23 +909,26 @@ Three hooks work together:
 }
 ```
 
-**`check-commit.sh`** — `PreToolUse` on Bash: intercepts `git commit`, runs
+**`check-commit.js`** — `PreToolUse` on Bash: intercepts `git commit`, runs
 `pnpm type-check && pnpm lint && pnpm test`. Exits non-zero on failure, giving
 Claude Code a chance to self-correct before the OS-level hook blocks it.
 
-**`check-tasks-write.sh`** — `PreToolUse` on Write/Edit: intercepts writes to
-`TASKS.md`, extracts new content to a tempfile, runs `validate_tasks.py`. Rejects
-the write and reports the violation if validation fails.
+**`check-tasks-write.js`** — `PreToolUse` on Write/Edit: intercepts writes to
+`TASKS.md`, resolves the proposed content in memory (no temp file), and calls
+`validate()` directly from `validate_tasks.js`. Rejects the write and reports
+the violation if validation fails.
 
-**`post-commit.sh`** — `PostToolUse` on Bash: detects a successful `git commit`
+**`post-commit.js`** — `PostToolUse` on Bash: detects a successful `git commit`
 and emits `MAUDE_POST_COMMIT_REQUIRED=1` to stdout. Claude Code reads this as a
 context signal to invoke the `analyze-refactoring` skill before the next task.
 
-All hook scripts and `validate_tasks.py` live in `.claude/hooks/` and are committed.
+All hook scripts live in `.claude/hooks/` and are committed. They are Node.js
+scripts — no Python or bash dependency beyond `node` itself.
 
-`validate_tasks.py` checks: required sections present, task IDs sequential and
-unique, status values from allowed set, Depends: references resolve, milestone
-headings match the spec, no sections removed.
+`validate_tasks.js` exports `validate(content: string) => string[]` for use by
+`check-tasks-write.js` and is also runnable as a CLI. It checks: required sections
+present, task IDs sequential and unique, status values from allowed set, Depends:
+references resolve, milestone headings match the spec, no sections removed.
 
 ### Layer 3: Skills (in `.claude/skills/`)
 
@@ -980,7 +989,7 @@ allowed-tools: Read, Bash
 Before saving any edit to TASKS.md, run:
 
 ```bash
-python3 .claude/hooks/validate_tasks.py TASKS.md
+node .claude/hooks/validate_tasks.js TASKS.md
 ```
 
 If it exits non-zero, report the specific violation and do not save the edit.
@@ -1059,10 +1068,10 @@ Invoke after committing a task: `/simplify` or `/simplify focus on <specific con
 .claude/
   settings.json
   hooks/
-    check-commit.sh
-    check-tasks-write.sh
-    post-commit.sh
-    validate_tasks.py
+    check-commit.js
+    check-tasks-write.js
+    post-commit.js
+    validate_tasks.js               ← exports validate(); also a CLI
   skills/
     run-pre-commit-check/SKILL.md   ← disable-model-invocation; user runs manually
     validate-tasks-edit/SKILL.md    ← user-invocable: false; Claude runs before edits
@@ -1213,11 +1222,11 @@ all pass on empty src; git pre-commit hook installed; skills and subagent scaffo
         `biome.json`, `CLAUDE.md`, `TASKS.md`, `.gitignore`, `.devcontainer/`,
         `docker-compose.yml`, `scripts/install-hooks.sh`, `scripts/pre-commit.sh`,
         `.claude/settings.json`, `.claude/hooks/` (all four files),
-        `.claude/skills/` (three skills), `.claude/agents/analyze-refactoring.md`
+        `.claude/skills/` (three skills)
       Test: `pnpm install` succeeds; `pnpm type-check` and `pnpm lint` run cleanly
         on empty src; git pre-commit hook blocks a deliberately failing commit;
-        `validate_tasks.py TASKS.md` exits 0; container starts, port 3000 reachable,
-        host.docker.internal resolves
+        `node .claude/hooks/validate_tasks.js TASKS.md` exits 0; container starts,
+        port 3000 reachable, host.docker.internal resolves
 
 ---
 
