@@ -42,7 +42,7 @@ all pass on empty src; git pre-commit hook installed; skills and subagent scaffo
 Single-column layout; no history pane, no observability pane yet. This is the
 end-to-end slice that proves the streaming pipeline works.
 
-- [ ] T01 — SQLite schema and migration runner
+- [x] T01 — SQLite schema and migration runner
       User value: prerequisite for BFF to persist messages; also needed by T09
       Deliverable: `migrations/001_initial.sql`, `src/lib/server/db.ts`
       Test: migration runs cleanly; tables exist; default settings inserted

@@ -6,7 +6,10 @@ const createJestConfig = nextJest({ dir: './' });
 const config = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
-  setupFiles: ['<rootDir>/jest.setup.ts'],
+  // setupFilesAfterEnv runs after the test framework is installed in the environment,
+  // so expect.extend() calls in @testing-library/jest-dom can find the global expect.
+  // (setupFiles runs before the framework; @testing-library/jest-dom needs expect to exist.)
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   // Allow ESM packages (react-markdown, remark-gfm, unified ecosystem) to be
   // transformed by SWC rather than excluded from the transform pipeline.
   transformIgnorePatterns: [
