@@ -15,6 +15,8 @@ Run in sequence. Stop on the first failure and report the exact error output.
 2. `pnpm lint` — zero Biome errors or warnings
 3. `pnpm test` — all tests pass
 4. `pnpm test:coverage` — coverage has not decreased
+5. `/simplify` — review staged changes for reuse, quality, and efficiency;
+   apply any fixes and re-stage
 
-Only proceed to `git commit` when all four exit 0.
+Only proceed to `git commit` when all five steps complete without error.
 Fix all failures before retrying. Do not suppress errors.

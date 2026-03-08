@@ -14,7 +14,8 @@ Hard gates run automatically. Do not use `--no-verify`. Do not suppress lint err
 - Claude Code PreToolUse hooks intercept `git commit` and TASKS.md writes
 - Claude Code PostToolUse hook signals that `analyze-refactoring` skill must
   run after every commit before the next task begins
-- `run-pre-commit-check` skill activates manually before commit attempts
+- `run-pre-commit-check` skill activates manually before commit attempts;
+  runs `/simplify` as its final step after all checks pass
 - `validate-tasks-edit` skill activates automatically before TASKS.md edits
 
 ## Non-negotiable constraints
@@ -33,7 +34,8 @@ Hard gates run automatically. Do not use `--no-verify`. Do not suppress lint err
 1. Read the task definition in TASKS.md
 2. Write failing tests that specify the behavior
 3. Implement the minimum code to make tests pass
-4. Run `run-pre-commit-check` skill (or `pnpm type-check && pnpm lint && pnpm test`)
+4. Run `run-pre-commit-check` skill — type-check, lint, test, coverage, then
+   `/simplify` to clean up the implementation before committing
 5. Run Playwright tests if the task touches UI behavior
 6. Self-review every changed file before committing
 7. Commit (one commit per task)
