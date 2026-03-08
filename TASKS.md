@@ -47,7 +47,7 @@ end-to-end slice that proves the streaming pipeline works.
       Deliverable: `migrations/001_initial.sql`, `src/lib/server/db.ts`
       Test: migration runs cleanly; tables exist; default settings inserted
 
-- [ ] T02 — Model adapter (Ollama)
+- [x] T02 — Model adapter (Ollama)
       User value: prerequisite for BFF to reach the model
       Deliverable: `src/lib/server/modelAdapter.ts`
       Test: unit test with mocked fetch; correct headers, `stream: true`,
