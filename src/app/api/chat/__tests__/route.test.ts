@@ -1,0 +1,227 @@
+/**
+ * @jest-environment node
+ *
+ * Tests run in Node because the route uses ReadableStream, TextEncoder, and
+ * crypto.randomUUID — all available natively in Node 18+. No Ollama instance
+ * is needed: streamCompletion and getSettings are mocked at module level.
+ *
+ * These tests verify the BFF's translation responsibility: Ollama raw tokens IN,
+ * Anthropic-style SSE events OUT.
+ */
+
+import type { SSEEvent } from '../../../../lib/client/events';
+import type { ChatMessage } from '../../../../lib/server/modelAdapter';
+
+// ---------------------------------------------------------------------------
+// Module mocks — must be declared before any import that resolves the module
+// ---------------------------------------------------------------------------
+
+// Mock the DB so tests never touch the filesystem. getSettings returns empty
+// settings by default; individual tests override with mockReturnValueOnce.
+jest.mock('../../../../lib/server/db', () => ({
+  getSettings: jest.fn(() => ({ name: '', personalizationPrompt: '' })),
+}));
+
+// Mock the model adapter so no HTTP request is made to Ollama. streamCompletion
+// is replaced per-test with an async generator yielding controlled token sequences.
+jest.mock('../../../../lib/server/modelAdapter', () => {
+  // Re-export ModelAdapterError as the real class so instanceof checks in the
+  // route still work against the mocked module's reference.
+  class ModelAdapterError extends Error {
+    constructor(
+      public readonly code: 'model_unreachable' | 'bad_response',
+      message: string
+    ) {
+      super(message);
+      this.name = 'ModelAdapterError';
+    }
+  }
+  return {
+    streamCompletion: jest.fn(),
+    ModelAdapterError,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Imports after mocks are registered
+// ---------------------------------------------------------------------------
+
+import { getSettings } from '../../../../lib/server/db';
+import { ModelAdapterError, streamCompletion } from '../../../../lib/server/modelAdapter';
+import { POST } from '../route';
+
+const mockGetSettings = getSettings as jest.MockedFunction<typeof getSettings>;
+const mockStreamCompletion = streamCompletion as jest.MockedFunction<typeof streamCompletion>;
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Consume a streaming Response body and parse each SSE data line into an
+ * SSEEvent. Lines are split on the double-newline SSE event separator.
+ * Malformed lines are skipped (mirrors sseParser's graceful handling).
+ */
+async function collectEvents(response: Response): Promise<SSEEvent[]> {
+  const events: SSEEvent[] = [];
+  const text = await response.text();
+
+  // SSE events are separated by blank lines; each event is "data: <json>\n"
+  for (const block of text.split('\n\n')) {
+    const line = block.trim();
+    if (!line.startsWith('data:')) continue;
+    const payload = line.slice('data:'.length).trim();
+    if (!payload || payload === '[DONE]') continue;
+    try {
+      const parsed = JSON.parse(payload) as SSEEvent;
+      events.push(parsed);
+    } catch {
+      // skip malformed
+    }
+  }
+  return events;
+}
+
+/** Build a minimal NextRequest-compatible Request for POST /api/chat. */
+function makeRequest(messages: ChatMessage[], conversationId: string | null = null): Request {
+  return new Request('http://localhost/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, conversationId }),
+  });
+}
+
+/** Async generator that yields the provided token strings. */
+async function* tokenGen(tokens: string[]): AsyncIterable<string> {
+  for (const t of tokens) yield t;
+}
+
+// Restore mocks after each test so state doesn't bleed between suites.
+afterEach(() => {
+  jest.clearAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// Suite 1: Happy path event sequence
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — happy path event sequence', () => {
+  it('emits message_start → content_block_start → deltas → content_block_stop → message_stop', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hello', ' world']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(events[0]).toMatchObject({ type: 'message_start' });
+    expect(events[1]).toEqual({ type: 'content_block_start' });
+    expect(events[2]).toEqual({ type: 'content_block_delta', delta: { text: 'Hello' } });
+    expect(events[3]).toEqual({ type: 'content_block_delta', delta: { text: ' world' } });
+    expect(events[4]).toEqual({ type: 'content_block_stop' });
+    expect(events[5]).toMatchObject({ type: 'message_stop' });
+    expect(events).toHaveLength(6);
+  });
+
+  it('emits a single delta per token', async () => {
+    const tokens = ['a', 'b', 'c'];
+    mockStreamCompletion.mockResolvedValue(tokenGen(tokens));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'test' }]));
+    const events = await collectEvents(response);
+
+    const deltas = events.filter((e) => e.type === 'content_block_delta');
+    expect(deltas).toHaveLength(3);
+    expect(deltas[0]).toEqual({ type: 'content_block_delta', delta: { text: 'a' } });
+    expect(deltas[1]).toEqual({ type: 'content_block_delta', delta: { text: 'b' } });
+    expect(deltas[2]).toEqual({ type: 'content_block_delta', delta: { text: 'c' } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 2: message_start fields
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — message_start fields', () => {
+  it('includes a non-empty message_id in message_start', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen([]));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const start = events.find((e) => e.type === 'message_start');
+    expect(start).toBeDefined();
+    // Type narrowing for the discriminated union
+    if (start?.type === 'message_start') {
+      expect(typeof start.message_id).toBe('string');
+      expect(start.message_id.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('includes prompt_used in message_start and it reflects injected name', async () => {
+    // Return settings with a name so buildSystemPrompt injects it
+    mockGetSettings.mockReturnValueOnce({ name: 'Alice', personalizationPrompt: '' });
+    mockStreamCompletion.mockResolvedValue(tokenGen([]));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hello' }]));
+    const events = await collectEvents(response);
+
+    const start = events.find((e) => e.type === 'message_start');
+    if (start?.type === 'message_start') {
+      expect(start.prompt_used).toContain('Alice');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 3: Error handling
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — error events', () => {
+  it('emits an error event with the adapter error code on model_unreachable', async () => {
+    // streamCompletion rejects before yielding any token
+    mockStreamCompletion.mockRejectedValue(
+      new ModelAdapterError('model_unreachable', 'Cannot reach Ollama')
+    );
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toBeDefined();
+    if (errorEvent?.type === 'error') {
+      expect(errorEvent.error.code).toBe('model_unreachable');
+    }
+  });
+
+  it('still emits message_start before the error event', async () => {
+    mockStreamCompletion.mockRejectedValue(new ModelAdapterError('bad_response', 'HTTP 503'));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const types = events.map((e) => e.type);
+    expect(types[0]).toBe('message_start');
+    expect(types).toContain('error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 4: HTTP response metadata
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — response headers', () => {
+  it('sets Content-Type to text/event-stream', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen([]));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+
+    expect(response.headers.get('Content-Type')).toContain('text/event-stream');
+  });
+
+  it('returns a 200 status', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen([]));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+
+    expect(response.status).toBe(200);
+  });
+});

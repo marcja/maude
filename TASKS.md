@@ -64,7 +64,7 @@ end-to-end slice that proves the streaming pipeline works.
       Test: base prompt assembled; name injection; personalization injection;
         empty settings produce clean base prompt
 
-- [ ] T05 — BFF route: happy path streaming
+- [x] T05 — BFF route: happy path streaming
       User value: first end-to-end token flow from Ollama to HTTP response
       Deliverable: `src/app/api/chat/route.ts` (basic SSE emission, no abort yet)
       Depends: T01, T02, T04
