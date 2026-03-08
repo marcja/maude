@@ -90,7 +90,7 @@ end-to-end slice that proves the streaming pipeline works.
       Test: submit fires on Enter; Shift+Enter inserts newline; Stop button
         visible during streaming only; disabled when empty
 
-- [ ] T09 — BFF route: abort signal propagation + SQLite write
+- [x] T09 — BFF route: abort signal propagation + SQLite write
       User value: cancellation works end-to-end; completed messages are persisted
       Deliverable: updates to `src/app/api/chat/route.ts`
       Depends: T05, T01

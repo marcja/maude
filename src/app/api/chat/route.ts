@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { SSEEvent } from '../../../lib/client/events';
-import { getSettings } from '../../../lib/server/db';
+import { createConversation, getSettings, insertMessage } from '../../../lib/server/db';
 import { ModelAdapterError, streamCompletion } from '../../../lib/server/modelAdapter';
 import type { ChatMessage } from '../../../lib/server/modelAdapter';
 import { buildSystemPrompt } from '../../../lib/server/promptBuilder';
@@ -53,11 +53,20 @@ function encode(event: SSEEvent): Uint8Array {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request): Promise<Response> {
-  const { messages } = (await request.json()) as RequestBody;
+  const { messages, conversationId: incomingConversationId } =
+    (await request.json()) as RequestBody;
 
   const settings = getSettings();
   const systemPrompt = buildSystemPrompt(settings);
+  // messageId doubles as the assistant message's DB id — generated once so the
+  // message_start event and the DB row share the same identifier.
   const messageId = randomUUID();
+
+  // Conversation ID: use the incoming one (continuation) or mint a new one.
+  const conversationId = incomingConversationId ?? randomUUID();
+
+  // First user message content: used for title generation and as the persisted user message body.
+  const firstUserContent = messages.find((m) => m.role === 'user')?.content ?? '';
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -68,39 +77,61 @@ export async function POST(request: Request): Promise<Response> {
       );
 
       try {
-        // T09 replaces new AbortController().signal with request.signal once
-        // abort propagation is wired end-to-end.
-        const tokens = await streamCompletion(messages, systemPrompt, new AbortController().signal);
+        // Propagate the HTTP request's abort signal to Ollama so that clicking
+        // Stop cancels the upstream fetch rather than just closing the SSE stream.
+        const tokens = await streamCompletion(messages, systemPrompt, request.signal);
 
         // content_block_start signals "a text block is opening" to the client.
         // Emitted once before the first delta, not per-token.
         controller.enqueue(encode({ type: 'content_block_start' }));
 
+        let accumulatedContent = '';
         for await (const token of tokens) {
+          accumulatedContent += token;
           controller.enqueue(encode({ type: 'content_block_delta', delta: { text: token } }));
         }
 
         controller.enqueue(encode({ type: 'content_block_stop' }));
 
+        // Persist only on successful completion. If the signal fires mid-stream,
+        // streamCompletion throws before this block is reached — no DB rows written.
+        const now = Date.now();
+        if (!incomingConversationId) {
+          const title = firstUserContent.slice(0, 50) || 'New conversation';
+          createConversation(conversationId, title, now);
+        }
+        const msgBase = { conversation_id: conversationId, thinking: null, created_at: now };
+        insertMessage({ ...msgBase, id: randomUUID(), role: 'user', content: firstUserContent });
+        insertMessage({
+          ...msgBase,
+          id: messageId,
+          role: 'assistant',
+          content: accumulatedContent,
+        });
+
         // Ollama's stream:true mode doesn't surface aggregate usage in the SSE
-        // body; placeholder zeros here. T09 / a future task can fill real counts
+        // body; placeholder zeros here. A future task can fill real counts
         // if the model returns them in a final chunk.
         controller.enqueue(
           encode({ type: 'message_stop', usage: { input_tokens: 0, output_tokens: 0 } })
         );
       } catch (err) {
-        const isAdapterError = err instanceof ModelAdapterError;
-        controller.enqueue(
-          encode({
-            type: 'error',
-            error: {
-              message: err instanceof Error ? err.message : String(err),
-              // Use the typed adapter code when available so the client can
-              // show a specific error (e.g. "model unreachable" vs generic).
-              code: isAdapterError ? err.code : 'unknown',
-            },
-          })
-        );
+        // Abort is client-initiated; the client already knows it stopped, so
+        // no error event is needed. DB writes are also skipped (not yet reached).
+        if (!request.signal.aborted) {
+          const isAdapterError = err instanceof ModelAdapterError;
+          controller.enqueue(
+            encode({
+              type: 'error',
+              error: {
+                message: err instanceof Error ? err.message : String(err),
+                // Use the typed adapter code when available so the client can
+                // show a specific error (e.g. "model unreachable" vs generic).
+                code: isAdapterError ? err.code : 'unknown',
+              },
+            })
+          );
+        }
       } finally {
         controller.close();
       }

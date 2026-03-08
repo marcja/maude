@@ -18,8 +18,11 @@ import type { ChatMessage } from '../../../../lib/server/modelAdapter';
 
 // Mock the DB so tests never touch the filesystem. getSettings returns empty
 // settings by default; individual tests override with mockReturnValueOnce.
+// createConversation and insertMessage are no-ops by default; verified in Suite 5.
 jest.mock('../../../../lib/server/db', () => ({
   getSettings: jest.fn(() => ({ name: '', personalizationPrompt: '' })),
+  createConversation: jest.fn(),
+  insertMessage: jest.fn(),
 }));
 
 // Mock the model adapter so no HTTP request is made to Ollama. streamCompletion
@@ -46,12 +49,14 @@ jest.mock('../../../../lib/server/modelAdapter', () => {
 // Imports after mocks are registered
 // ---------------------------------------------------------------------------
 
-import { getSettings } from '../../../../lib/server/db';
+import { createConversation, getSettings, insertMessage } from '../../../../lib/server/db';
 import { ModelAdapterError, streamCompletion } from '../../../../lib/server/modelAdapter';
 import { POST } from '../route';
 
 const mockGetSettings = getSettings as jest.MockedFunction<typeof getSettings>;
 const mockStreamCompletion = streamCompletion as jest.MockedFunction<typeof streamCompletion>;
+const mockCreateConversation = createConversation as jest.MockedFunction<typeof createConversation>;
+const mockInsertMessage = insertMessage as jest.MockedFunction<typeof insertMessage>;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -83,11 +88,16 @@ async function collectEvents(response: Response): Promise<SSEEvent[]> {
 }
 
 /** Build a minimal NextRequest-compatible Request for POST /api/chat. */
-function makeRequest(messages: ChatMessage[], conversationId: string | null = null): Request {
+function makeRequest(
+  messages: ChatMessage[],
+  conversationId: string | null = null,
+  signal?: AbortSignal
+): Request {
   return new Request('http://localhost/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, conversationId }),
+    signal,
   });
 }
 
@@ -223,5 +233,71 @@ describe('POST /api/chat — response headers', () => {
     const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
 
     expect(response.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 5: DB persistence
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — DB persistence', () => {
+  it('writes conversation and two messages on completed stream', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hello', ' world']));
+
+    const messages: ChatMessage[] = [{ role: 'user', content: 'Plan your approach' }];
+    // Consume the body so the ReadableStream start() runs to completion.
+    await collectEvents(await POST(makeRequest(messages)));
+
+    // Conversation created with title from first user message
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
+    expect(mockCreateConversation).toHaveBeenCalledWith(
+      expect.any(String),
+      'Plan your approach',
+      expect.any(Number)
+    );
+
+    // Two messages inserted: user then assistant
+    expect(mockInsertMessage).toHaveBeenCalledTimes(2);
+    expect(mockInsertMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ role: 'user', content: 'Plan your approach' })
+    );
+    expect(mockInsertMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ role: 'assistant', content: 'Hello world' })
+    );
+  });
+
+  it('writes no DB row when the stream is aborted', async () => {
+    // Simulate Ollama fetch throwing when the abort signal fires
+    const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    mockStreamCompletion.mockRejectedValue(abortError);
+
+    const controller = new AbortController();
+    controller.abort();
+    const request = makeRequest([{ role: 'user', content: 'Hi' }], null, controller.signal);
+
+    await collectEvents(await POST(request));
+
+    expect(mockCreateConversation).not.toHaveBeenCalled();
+    expect(mockInsertMessage).not.toHaveBeenCalled();
+  });
+
+  it('skips createConversation but inserts messages when conversationId is provided', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hi']));
+
+    const messages: ChatMessage[] = [{ role: 'user', content: 'Continue' }];
+    await collectEvents(await POST(makeRequest(messages, 'existing-id')));
+
+    expect(mockCreateConversation).not.toHaveBeenCalled();
+    expect(mockInsertMessage).toHaveBeenCalledTimes(2);
+    expect(mockInsertMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ role: 'user', conversation_id: 'existing-id' })
+    );
+    expect(mockInsertMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ role: 'assistant', conversation_id: 'existing-id' })
+    );
   });
 });
