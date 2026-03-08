@@ -71,7 +71,7 @@ end-to-end slice that proves the streaming pipeline works.
       Test: MSW normal handler; event sequence (message_start → deltas →
         message_stop) reaches client; prompt_used field present in message_start
 
-- [ ] T06 — useStream hook (minimal)
+- [x] T06 — useStream hook (minimal)
       User value: React hook that drives the streaming UI; wires SSE to state
       Deliverable: `src/hooks/useStream.ts`
       Depends: T03
