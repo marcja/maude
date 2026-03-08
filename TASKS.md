@@ -84,7 +84,7 @@ end-to-end slice that proves the streaming pipeline works.
       Test: renders user message; renders assistant message with TTFT badge;
         copy button present; streaming state shows spinner
 
-- [ ] T08 — InputArea component
+- [x] T08 — InputArea component
       User value: the input bar — submit, Stop button, keyboard shortcuts
       Deliverable: `src/components/chat/InputArea.tsx`
       Test: submit fires on Enter; Shift+Enter inserts newline; Stop button
