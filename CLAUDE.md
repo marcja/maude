@@ -32,7 +32,10 @@ Hard gates run automatically. Do not use `--no-verify`. Do not suppress lint err
 ## TDD workflow — mandatory for every task
 
 1. Read the task definition in TASKS.md
-2. Write failing tests that specify the behavior
+2. Write failing tests that specify the behavior. Test infrastructure (MSW
+   handlers, fixtures, shared helpers) follows the same rule: build it when
+   the first test that needs it is written, not speculatively. SPEC.md
+   guidance on timing is advisory; the test suite is the authority.
 3. Implement the minimum code to make tests pass
 4. Run `run-pre-commit-check` skill — type-check, lint, test, coverage, then
    `/simplify` to clean up the implementation before committing
@@ -52,6 +55,8 @@ Hard gates run automatically. Do not use `--no-verify`. Do not suppress lint err
 - [ ] No client component imports from `src/lib/server/`
 - [ ] Error paths are handled explicitly, not silently swallowed
 - [ ] Change is the smallest complete working increment
+- [ ] `git status` checked before `git add` — VSCode auto-stages files created
+      by the Write tool; verify only intended files are staged
 
 ## Commit message format
 
