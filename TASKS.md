@@ -58,7 +58,7 @@ end-to-end slice that proves the streaming pipeline works.
       Deliverable: `src/lib/client/sseParser.ts`
       Test: partial chunks, multi-event chunks, message_stop, error events
 
-- [ ] T04 — Prompt builder
+- [x] T04 — Prompt builder
       User value: prerequisite for BFF to construct system prompt from settings
       Deliverable: `src/lib/server/promptBuilder.ts`
       Test: base prompt assembled; name injection; personalization injection;
