@@ -78,7 +78,7 @@ end-to-end slice that proves the streaming pipeline works.
       Test: token accumulation; TTFT recorded; message_stop finalizes;
         error event sets error state; abort controller wired to Stop action
 
-- [ ] T07 — MessageItem component
+- [x] T07 — MessageItem component
       User value: renders a single chat message (user or assistant)
       Deliverable: `src/components/chat/MessageItem.tsx`
       Test: renders user message; renders assistant message with TTFT badge;
