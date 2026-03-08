@@ -53,7 +53,7 @@ end-to-end slice that proves the streaming pipeline works.
       Test: unit test with mocked fetch; correct headers, `stream: true`,
         signal propagation, `model_unreachable` error on connection failure
 
-- [ ] T03 — SSE parser utility
+- [x] T03 — SSE parser utility
       User value: prerequisite for client to consume the token stream
       Deliverable: `src/lib/client/sseParser.ts`
       Test: partial chunks, multi-event chunks, message_stop, error events
