@@ -33,6 +33,64 @@ interface RequestBody {
 }
 
 // ---------------------------------------------------------------------------
+// Request validation — "validate at boundaries, trust internally"
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate the raw JSON body from the client. This is the system boundary:
+ * everything downstream (promptBuilder, modelAdapter, DB) can trust that the
+ * data has the correct shape because validation happens here, once, up front.
+ *
+ * No Zod dependency — manual checks are simpler and keep the dependency tree
+ * small. A production app with many endpoints would benefit from a schema
+ * library; for a single route, manual validation is clearer and teaches the
+ * underlying technique.
+ */
+function validateRequestBody(body: unknown): RequestBody {
+  if (typeof body !== 'object' || body === null) {
+    throw new ValidationError('Request body must be a JSON object');
+  }
+
+  const obj = body as Record<string, unknown>;
+
+  if (!Array.isArray(obj.messages) || obj.messages.length === 0) {
+    throw new ValidationError('messages must be a non-empty array');
+  }
+
+  for (const msg of obj.messages) {
+    if (typeof msg !== 'object' || msg === null) {
+      throw new ValidationError('Each message must be an object');
+    }
+    const m = msg as Record<string, unknown>;
+    if (m.role !== 'user' && m.role !== 'assistant') {
+      throw new ValidationError("Each message role must be 'user' or 'assistant'");
+    }
+    if (typeof m.content !== 'string') {
+      throw new ValidationError('Each message content must be a string');
+    }
+  }
+
+  if (obj.conversationId !== undefined && obj.conversationId !== null) {
+    if (typeof obj.conversationId !== 'string') {
+      throw new ValidationError('conversationId must be a string or null');
+    }
+  }
+
+  // After validation, the shape is guaranteed — this cast is safe.
+  return {
+    messages: obj.messages as ChatMessage[],
+    conversationId: (obj.conversationId as string) ?? null,
+  };
+}
+
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -53,12 +111,23 @@ function encode(event: SSEEvent): Uint8Array {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request): Promise<Response> {
-  // request.json() returns `unknown`. The `as RequestBody` cast trusts the
-  // client to send valid data — acceptable here because this is an internal
-  // BFF endpoint, not a public API. A production app would validate with Zod
-  // or a manual check before trusting the shape (see commit 4 in the review).
-  const { messages, conversationId: incomingConversationId } =
-    (await request.json()) as RequestBody;
+  // Validate at the boundary: request.json() returns `unknown`, so we validate
+  // the shape before trusting it. Validation errors return 400 with a JSON body
+  // (not an SSE stream) because the HTTP status hasn't been committed yet —
+  // unlike model errors, which must be communicated as SSE events after 200.
+  let body: RequestBody;
+  try {
+    body = validateRequestBody(await request.json());
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    throw err;
+  }
+  const { messages, conversationId: incomingConversationId } = body;
 
   const settings = getSettings();
   const systemPrompt = buildSystemPrompt(settings);

@@ -317,7 +317,80 @@ describe('POST /api/chat — DB persistence', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 6: Non-ModelAdapterError maps to unknown error code
+// Suite 6: Request body validation
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — request body validation', () => {
+  /** Helper: send a raw JSON body without going through makeRequest's typed interface. */
+  function rawRequest(body: unknown): Request {
+    return new Request('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('returns 400 when messages field is missing', async () => {
+    const response = await POST(rawRequest({ conversationId: null }));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/messages/i);
+  });
+
+  it('returns 400 when messages is not an array', async () => {
+    const response = await POST(rawRequest({ messages: 'not-an-array' }));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/messages/i);
+  });
+
+  it('returns 400 when messages is an empty array', async () => {
+    const response = await POST(rawRequest({ messages: [] }));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/messages/i);
+  });
+
+  it('returns 400 when a message has an invalid role', async () => {
+    const response = await POST(rawRequest({ messages: [{ role: 'system', content: 'hi' }] }));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/role/i);
+  });
+
+  it('returns 400 when a message has non-string content', async () => {
+    const response = await POST(rawRequest({ messages: [{ role: 'user', content: 123 }] }));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/content/i);
+  });
+
+  it('returns 400 when conversationId is a non-string truthy value', async () => {
+    const response = await POST(
+      rawRequest({ messages: [{ role: 'user', content: 'hi' }], conversationId: 42 })
+    );
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/conversationId/i);
+  });
+
+  it('accepts valid body with conversationId: null', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['ok']));
+    const response = await POST(
+      rawRequest({ messages: [{ role: 'user', content: 'hi' }], conversationId: null })
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('accepts valid body without conversationId field', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['ok']));
+    const response = await POST(rawRequest({ messages: [{ role: 'user', content: 'hi' }] }));
+    expect(response.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7: Non-ModelAdapterError maps to unknown error code
 // ---------------------------------------------------------------------------
 
 describe('POST /api/chat — generic error code', () => {
