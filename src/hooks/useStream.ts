@@ -117,6 +117,15 @@ export function useStream(): UseStreamResult {
           signal: controller.signal,
         });
 
+        // Check response.ok before attempting SSE parse. Without this, a
+        // reverse proxy returning a 502 HTML error page would be silently
+        // swallowed by the SSE parser (no lines start with "data:"), and the
+        // user would see no error and no response — a confusing failure mode.
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          throw new Error(`Server returned HTTP ${response.status}${text ? `: ${text}` : ''}`);
+        }
+
         if (!response.body) throw new Error('Response body is null');
 
         for await (const event of parseSSEStream(response.body)) {

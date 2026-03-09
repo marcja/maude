@@ -234,7 +234,62 @@ describe('useStream — network error', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 7: initial state
+// Suite 7: non-2xx HTTP response
+// ---------------------------------------------------------------------------
+
+describe('useStream — non-2xx response', () => {
+  it('sets error state when server returns 500 with text body', async () => {
+    server.use(
+      http.post('/api/chat', () => new HttpResponse('Internal Server Error', { status: 500 }))
+    );
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.error).toContain('500');
+  });
+
+  it('sets error state when server returns 502 with HTML body', async () => {
+    server.use(
+      http.post(
+        '/api/chat',
+        () => new HttpResponse('<html><body>Bad Gateway</body></html>', { status: 502 })
+      )
+    );
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.error).toContain('502');
+  });
+
+  it('does not call onComplete on non-2xx response', async () => {
+    server.use(http.post('/api/chat', () => new HttpResponse('Bad Request', { status: 400 })));
+
+    const { result } = renderHook(() => useStream());
+    const onComplete = jest.fn();
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }], null, onComplete);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 8: initial state
 // ---------------------------------------------------------------------------
 
 describe('useStream — initial state', () => {
