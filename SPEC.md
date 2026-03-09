@@ -14,7 +14,7 @@
 3. [Routes and Application Structure](#3-routes-and-application-structure)
 4. [UX Specification](#4-ux-specification)
 5. [Architecture](#5-architecture)
-6. [React 18 Patterns](#6-react-18-patterns)
+6. [React Concurrent Patterns](#6-react-18-patterns)
 7. [Thinking Block Support](#7-thinking-block-support)
 8. [Observability Pane](#8-observability-pane)
 9. [Test Plan](#9-test-plan)
@@ -129,7 +129,7 @@ on the host. The `./data/` directory is gitignored except for `.gitkeep`.
 |---|---|---|
 | Framework | Next.js 14+ App Router | BFF pattern via API routes |
 | Language | TypeScript (strict mode) | No `any`, no `as` casts without comment |
-| UI | React 18 | See §6 for required patterns |
+| UI | React 19 | See §6 for required concurrent patterns |
 | Styling | Tailwind CSS | Utility classes only; no component libraries |
 | Linting + formatting | Biome | Replaces ESLint + Prettier; single config, ~20x faster |
 | Package manager | pnpm | Faster installs, stricter dependency resolution |
@@ -445,7 +445,7 @@ export function useStream(): {
 
 ---
 
-## 6. React 18 Patterns
+## 6. React Concurrent Patterns
 
 These are **explicit implementation requirements**, not suggestions. Each usage must
 include a comment explaining *why* the pattern is used here.
@@ -479,7 +479,7 @@ const deferredContent = useDeferredValue(rawContent);
 
 ### Automatic batching
 
-React 18 batches all state updates automatically in async contexts. Rely on this.
+React 18+ (including React 19) batches all state updates automatically in async contexts. Rely on this.
 Do not call `flushSync`. Do not use legacy `unstable_batchedUpdates`. Each SSE
 event handler updates state normally.
 

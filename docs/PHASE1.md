@@ -265,7 +265,7 @@ case 'content_block_delta': {
 }
 ```
 
-This is one of React 18's concurrent features in action. `startTransition` tells React that the state update inside it is "non-urgent" — React can interrupt it to handle higher-priority work like user input.
+This is a React concurrent feature (introduced in React 18, unchanged in React 19). `startTransition` tells React that the state update inside it is "non-urgent" — React can interrupt it to handle higher-priority work like user input.
 
 Without `startTransition`, consider what happens during heavy streaming: the model sends 50 tokens per second, each triggering a state update and re-render. If the user clicks Stop during this, the click event has to wait for the current render to finish. At 50 renders/second, that means up to 20ms of input delay — noticeable and frustrating.
 
@@ -282,7 +282,7 @@ These refs mirror the `tokens` and `ttft` state values. Every time a token arriv
 
 Because of `startTransition`. When the stream ends and the hook calls `onComplete`, it needs to pass the final accumulated tokens. But the state value might not reflect the latest token yet — `startTransition` defers state updates, so `state.tokens` could be one or two tokens behind the actual stream position. The ref is always current because ref writes are synchronous. `onComplete` reads from the ref, not from state.
 
-#### onComplete callback and React 18 automatic batching
+#### onComplete callback and automatic batching
 
 The `send` function accepts an optional `onComplete` callback that fires when the stream finishes (either by `message_stop` or user abort):
 
@@ -306,7 +306,7 @@ send(nextContext, undefined, ({ tokens: t, ttft: f }) => {
 });
 ```
 
-React 18's automatic batching is what makes this work smoothly. In React 17, state updates in async callbacks (like inside a `for await` loop) were *not* batched — each `setState` call triggered a separate render. In React 18, all state updates are batched regardless of context. So when `message_stop` fires and the hook calls `setState({ isStreaming: false })` followed by `onComplete` calling `setHistory(...)`, React batches both into a single render. The live streaming message disappears and the finalized history message appears atomically — no flicker frame where neither or both are visible.
+React's automatic batching (introduced in React 18, default in React 19) is what makes this work smoothly. In React 17, state updates in async callbacks (like inside a `for await` loop) were *not* batched — each `setState` call triggered a separate render. In React 18+, all state updates are batched regardless of context. So when `message_stop` fires and the hook calls `setState({ isStreaming: false })` followed by `onComplete` calling `setHistory(...)`, React batches both into a single render. The live streaming message disappears and the finalized history message appears atomically — no flicker frame where neither or both are visible.
 
 #### Abort is not an error
 
@@ -418,7 +418,7 @@ The rendering pattern for the live assistant message is worth noting:
 )}
 ```
 
-Finalized messages come from `history` state. The live streaming message comes directly from `useStream`'s `tokens` — it's not in `history` yet. When `message_stop` fires, the `onComplete` callback adds the completed message to `history` and `isStreaming` goes to `false`, so the live message disappears and the finalized one appears. Thanks to React 18 batching, this swap is atomic.
+Finalized messages come from `history` state. The live streaming message comes directly from `useStream`'s `tokens` — it's not in `history` yet. When `message_stop` fires, the `onComplete` callback adds the completed message to `history` and `isStreaming` goes to `false`, so the live message disappears and the finalized one appears. Thanks to automatic batching, this swap is atomic.
 
 ### Auto-scroll
 
@@ -479,9 +479,9 @@ MSW 2.0 requires `fetch`, `Request`, `Response`, and `ReadableStream` to be glob
 
 ---
 
-## React 18 patterns in practice
+## React concurrent patterns in practice
 
-Phase 1 uses two React 18 features — `startTransition` and automatic batching — and they're both worth examining because they solve real problems that are specific to streaming UI.
+Phase 1 uses two React concurrent features — `startTransition` and automatic batching — and they're both worth examining because they solve real problems that are specific to streaming UI. Both were introduced in React 18 and carry forward unchanged in React 19.
 
 ### startTransition: keeping the Stop button responsive
 
@@ -495,14 +495,28 @@ This isn't hypothetical. Without `startTransition`, the Stop button has a notice
 
 The problem: when the stream ends, two state updates need to happen simultaneously: `isStreaming` goes to `false` (hiding the live message) and a new entry appears in `history` (showing the finalized message). If these renders happen separately, there's a frame where neither message is visible (flicker) or both are visible (duplication).
 
-The solution: React 18 batches all state updates in the same synchronous context into a single render. When `message_stop` fires:
+The solution: React batches all state updates in the same synchronous context into a single render (default behavior since React 18, no opt-in required). When `message_stop` fires:
 
 1. The hook calls `setState({ isStreaming: false })`
 2. The hook calls `onComplete`, which calls `setHistory([...prev, finalizedMessage])`
 
 Both calls happen in the same synchronous execution. React batches them into one render. The user sees the streaming message replaced by the finalized message in a single frame.
 
-In React 17, this batching only worked inside React event handlers (like `onClick`). Async contexts — like the `for await` loop inside `useStream.send` — were *not* batched, and each `setState` triggered a separate render. React 18 fixed this by batching everywhere — it's the default behavior, no opt-in required. You don't need to do anything to enable it; the pedagogical value is understanding *that* it happens and *why* it matters for streaming UI. For streaming applications, this is a significant improvement.
+In React 17, this batching only worked inside React event handlers (like `onClick`). Async contexts — like the `for await` loop inside `useStream.send` — were *not* batched, and each `setState` triggered a separate render. React 18 fixed this by batching everywhere, and React 19 carries the same behavior forward. You don't need to do anything to enable it; the pedagogical value is understanding *that* it happens and *why* it matters for streaming UI. For streaming applications, this is a significant improvement.
+
+### Looking ahead: React 19 primitives
+
+Maude uses React 19, which adds several primitives relevant to later phases:
+
+- **`use()` hook** — can unwrap promises directly in render, which offers a more ergonomic pattern for consuming async data than the current ref-mirroring approach in `useStream`. We don't use it in Phase 1 because the streaming pattern (accumulating state from an async generator) is better served by `useState` + refs, but `use()` is worth understanding for simpler async patterns like loading conversation history.
+
+- **`useActionState`** — designed for form submissions that trigger server actions. Phase 4's settings page is a natural fit: the settings form can use `useActionState` to handle submission, pending state, and error feedback without manual `useState` orchestration.
+
+- **`useOptimistic`** — shows an optimistic value while an async action is in progress. In a chat app, this could show the user message immediately in the history while the BFF processes it, rather than waiting for `send()` to fire. We don't need it in Phase 1 (the user message is added to history synchronously before `send()`), but it becomes relevant when message persistence is async.
+
+- **`ref` as a prop** — React 19 passes `ref` as a regular prop instead of requiring `forwardRef`. This simplifies component composition. `MessageList` already receives its ref as a regular prop (`listRef`), so the pattern is aligned — but in React 19 you could pass it as `ref` directly.
+
+These primitives don't change the core streaming architecture. `startTransition` and automatic batching remain the two patterns that matter most for streaming UI. But React 19's additions reduce boilerplate in the patterns that surround the streaming pipeline.
 
 ---
 

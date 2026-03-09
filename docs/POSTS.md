@@ -174,7 +174,7 @@ These are the things that make the posts valuable. Prioritize them:
    streaming." Concrete failure modes are more convincing than abstract
    principles.
 
-5. **Framework-specific patterns the reader might not know.** React 18 automatic
+5. **Framework-specific patterns the reader might not know.** React's automatic
    batching, `useDeferredValue` for expensive re-parses, MSW's dual-layer
    architecture (setupServer vs setupWorker). Explain these in the context where
    they're used, not as abstract tutorials.
