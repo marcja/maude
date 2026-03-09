@@ -54,7 +54,7 @@ export default function ChatPage() {
   // True when the user has scrolled >50px above the bottom during streaming.
   const [scrollSuspended, setScrollSuspended] = useState(false);
 
-  const { tokens, isStreaming, ttft, error, send, stop } = useStream();
+  const { tokens, isStreaming, ttft, error, failedMessages, send, stop } = useStream();
 
   // -------------------------------------------------------------------------
   // Auto-scroll (inline; T16 will extract to useAutoScroll hook)
@@ -122,6 +122,21 @@ export default function ChatPage() {
     });
   };
 
+  const handleRetry = () => {
+    if (!failedMessages) return;
+    // Re-send the same context that failed. The user message is already in
+    // history from the original attempt, so onComplete only needs to append
+    // the assistant reply — identical to a normal handleSubmit flow.
+    send(failedMessages, undefined, ({ tokens: t, ttft: f }) => {
+      if (t) {
+        setHistory((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'assistant', content: t, ttft: f },
+        ]);
+      }
+    });
+  };
+
   const handleNewChat = () => {
     stop();
     setHistory([]);
@@ -156,8 +171,20 @@ export default function ChatPage() {
       )}
 
       {error && (
-        <div className="p-2 text-sm text-red-600 bg-red-50 border-t border-red-200" role="alert">
-          {error}
+        <div
+          className="p-2 text-sm text-red-600 bg-red-50 border-t border-red-200 flex items-center gap-2"
+          role="alert"
+        >
+          <span className="flex-1">{error}</span>
+          {failedMessages && (
+            <button
+              type="button"
+              className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+              onClick={handleRetry}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 

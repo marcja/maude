@@ -300,5 +300,96 @@ describe('useStream — initial state', () => {
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.ttft).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.failedMessages).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 9: failedMessages for retry
+// ---------------------------------------------------------------------------
+
+describe('useStream — failedMessages', () => {
+  it('preserves the original messages on non-abort error', async () => {
+    server.use(http.post('/api/chat', () => HttpResponse.error()));
+
+    const { result } = renderHook(() => useStream());
+    const messages = [{ role: 'user' as const, content: 'Hi' }];
+
+    act(() => {
+      void result.current.send(messages);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.failedMessages).toEqual(messages);
+  });
+
+  it('preserves messages on SSE error event', async () => {
+    server.use(midstreamErrorHandler);
+
+    const { result } = renderHook(() => useStream());
+    const messages = [{ role: 'user' as const, content: 'Hi' }];
+
+    act(() => {
+      void result.current.send(messages);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.failedMessages).toEqual(messages);
+  });
+
+  it('preserves messages on non-2xx response', async () => {
+    server.use(
+      http.post('/api/chat', () => new HttpResponse('Internal Server Error', { status: 500 }))
+    );
+
+    const { result } = renderHook(() => useStream());
+    const messages = [{ role: 'user' as const, content: 'Hi' }];
+
+    act(() => {
+      void result.current.send(messages);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.failedMessages).toEqual(messages);
+  });
+
+  it('does not set failedMessages on abort (user-initiated stop)', async () => {
+    server.use(holdHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    act(() => {
+      result.current.stop();
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.failedMessages).toBeNull();
+  });
+
+  it('clears failedMessages when a new send() succeeds', async () => {
+    // First: trigger an error to populate failedMessages
+    server.use(http.post('/api/chat', () => HttpResponse.error()));
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+    await waitFor(() => expect(result.current.failedMessages).not.toBeNull());
+
+    // Second: successful send clears failedMessages
+    server.use(normalHandler);
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Retry' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.failedMessages).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 });

@@ -43,6 +43,11 @@ export interface StreamState {
   ttft: number | null;
   /** Error message from an SSE error event or a fetch failure; null otherwise. */
   error: string | null;
+  /** The messages array from the last failed send(), preserved so the caller can
+   *  retry without reconstructing the context. Null when no error has occurred or
+   *  after a successful send() clears the previous failure. Not set on abort —
+   *  abort is intentional, not a failure worth retrying. */
+  failedMessages: ChatMessage[] | null;
 }
 
 /** Called when a stream ends naturally (message_stop) or via user abort.
@@ -63,6 +68,7 @@ const INITIAL_STATE: StreamState = {
   isStreaming: false,
   ttft: null,
   error: null,
+  failedMessages: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -173,6 +179,7 @@ export function useStream(): UseStreamResult {
                 ...prev,
                 isStreaming: false,
                 error: event.error.message,
+                failedMessages: messages,
               }));
               // No onComplete on error — caller inspects the error state instead.
               break;
@@ -197,6 +204,7 @@ export function useStream(): UseStreamResult {
             ...prev,
             isStreaming: false,
             error: err instanceof Error ? err.message : 'Unknown error',
+            failedMessages: messages,
           }));
         }
       } finally {
