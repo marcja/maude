@@ -3,8 +3,8 @@
 /**
  * src/app/chat/page.tsx
  *
- * M1 milestone: the minimal single-column chat page. Wires useStream,
- * MessageList, MessageItem, and InputArea together with auto-scroll logic.
+ * Single-column chat page. Wires useStream, MessageList, MessageItem, and
+ * InputArea together. Auto-scroll delegated to useAutoScroll hook (T16).
  *
  * Design decisions:
  *
@@ -19,18 +19,17 @@
  *   tokens arrive. Because onComplete batches setHistory with isStreaming:false,
  *   the live message and the finalized history entry swap atomically.
  *
- * Auto-scroll (inline for T10; T16 extracts to useAutoScroll):
- *   A single useEffect scrolls to bottom on every `tokens` change while
- *   streaming and not suspended. `scrollSuspended` resets in handleSubmit
- *   (semantically: resume auto-scroll when the user sends a new message).
- *   The scroll handler sets suspension when the user is >50px above the
- *   bottom (SPEC §4.2).
+ * Auto-scroll (useAutoScroll hook, extracted in T16):
+ *   Scrolls to bottom on each token while streaming and not suspended.
+ *   resetSuspension() called in handleSubmit to resume auto-scroll for
+ *   new turns. Suspension threshold: >50px above bottom (SPEC §4.2).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { InputArea } from '../../components/chat/InputArea';
 import { MessageItem } from '../../components/chat/MessageItem';
 import { MessageList } from '../../components/chat/MessageList';
+import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { useStream } from '../../hooks/useStream';
 
 // ---------------------------------------------------------------------------
@@ -51,49 +50,19 @@ interface Message {
 export default function ChatPage() {
   // Finalized conversation messages (user turns + completed assistant turns).
   const [history, setHistory] = useState<Message[]>([]);
-  // True when the user has scrolled >50px above the bottom during streaming.
-  const [scrollSuspended, setScrollSuspended] = useState(false);
 
   const { tokens, isStreaming, ttft, error, failedMessages, send, stop } = useStream();
 
   // -------------------------------------------------------------------------
-  // Auto-scroll (inline; T16 will extract to useAutoScroll hook)
+  // Auto-scroll (extracted to useAutoScroll in T16)
   // -------------------------------------------------------------------------
 
-  // HTMLDivElement | null matches MessageList's RefObject<HTMLDivElement | null> prop type.
   const listRef = useRef<HTMLDivElement | null>(null);
-
-  // Scroll to bottom on each token during active streaming (unless suspended).
-  // `tokens` drives re-execution on each new token; its value is not needed in
-  // the body — only the fact that it changed matters.
-  //
-  // requestAnimationFrame coalesces multiple scroll updates within a single
-  // display frame, preventing redundant synchronous reflows when tokens arrive
-  // faster than the display refresh rate (60Hz = ~16ms). Without rAF, 30-50
-  // tokens/sec would each trigger a layout reflow via scrollTop assignment.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger dep
-  useEffect(() => {
-    if (!isStreaming || scrollSuspended) return;
-    const id = requestAnimationFrame(() => {
-      const el = listRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
-    return () => cancelAnimationFrame(id);
-  }, [tokens, isStreaming, scrollSuspended]);
-
-  const handleScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    // Suspend auto-scroll if user has scrolled more than 50px above bottom
-    // (SPEC §4.2: "more than 50px above the bottom").
-    setScrollSuspended(el.scrollHeight - el.scrollTop - el.clientHeight > 50);
-  }, []);
-
-  const handleScrollToBottom = () => {
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-    setScrollSuspended(false);
-  };
+  const { scrollSuspended, handleScroll, scrollToBottom, resetSuspension } = useAutoScroll({
+    listRef,
+    isStreaming,
+    tokens,
+  });
 
   // -------------------------------------------------------------------------
   // Event handlers
@@ -106,7 +75,7 @@ export default function ChatPage() {
     const nextContext = [...history, userMsg].map(({ role, content }) => ({ role, content }));
 
     // Resume auto-scroll for the new turn before the first token arrives.
-    setScrollSuspended(false);
+    resetSuspension();
     setHistory((prev) => [...prev, userMsg]);
 
     send(nextContext, undefined, ({ tokens: t, ttft: f }) => {
@@ -165,7 +134,7 @@ export default function ChatPage() {
         <button
           type="button"
           className="fixed bottom-20 right-4 bg-blue-600 text-white px-3 py-1 rounded"
-          onClick={handleScrollToBottom}
+          onClick={scrollToBottom}
         >
           ↓ New content
         </button>
@@ -173,7 +142,7 @@ export default function ChatPage() {
 
       {error && (
         <div
-          className="p-2 text-sm text-red-600 bg-red-50 border-t border-red-200 flex items-center gap-2"
+          className="chat__error p-2 text-sm text-red-600 bg-red-50 border-t border-red-200 flex items-center gap-2"
           role="alert"
         >
           <span className="flex-1">{error}</span>
