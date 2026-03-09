@@ -5,10 +5,15 @@
  * Responsible for: assembling the base prompt and injecting user settings.
  * NOT responsible for: reading settings from DB, sending to Ollama.
  *
+ * The `server-only` import causes a build-time error if any client component
+ * transitively imports this module — enforced by the Next.js bundler.
+ *
  * Settings take effect on the next conversation, not mid-conversation.
  * This simplification is intentional — changing the prompt mid-stream would
  * invalidate the prompt_used field already emitted in message_start.
  */
+
+import 'server-only';
 
 import type { UserSettings } from './db';
 

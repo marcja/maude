@@ -1,15 +1,19 @@
 /**
  * src/lib/server/db.ts
  *
- * Single entry point for all SQLite access. Import ONLY from server-side code —
- * Next.js enforces this via the "server-only" boundary; CLAUDE.md prohibits
- * client components from importing anything under src/lib/server/.
+ * Single entry point for all SQLite access. Import ONLY from server-side code.
+ *
+ * The `server-only` import below causes a build-time error if any client
+ * component (directly or transitively) imports this module. This is Next.js's
+ * built-in boundary enforcement — a harder guarantee than convention or grep.
  *
  * better-sqlite3 is synchronous by design. This is intentional: Next.js API
  * routes run in Node.js where synchronous I/O on a local file is faster than
  * the async overhead of a remote database driver, and it eliminates a whole
  * class of async/await bugs in query code.
  */
+
+import 'server-only';
 
 import fs from 'node:fs';
 import path from 'node:path';

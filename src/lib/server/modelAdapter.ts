@@ -5,6 +5,9 @@
  * intentionally the ONLY file that reads OLLAMA_BASE_URL or MODEL_NAME —
  * swapping backends (e.g., adding a Docker model runner) is a one-file change.
  *
+ * The `server-only` import causes a build-time error if any client component
+ * transitively imports this module — enforced by the Next.js bundler.
+ *
  * The adapter is responsible for:
  *   1. Sending the streaming POST request to Ollama
  *   2. Surfacing connection failures as typed ModelAdapterErrors
@@ -13,6 +16,8 @@
  * Thinking-tag detection (<think> / </think>) is intentionally NOT done here —
  * that logic lives in the BFF route so the adapter stays a thin I/O wrapper.
  */
+
+import 'server-only';
 
 // ---------------------------------------------------------------------------
 // Configuration — the only place these env vars are read
