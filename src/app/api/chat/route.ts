@@ -184,6 +184,77 @@ function processBuffer(
 }
 
 // ---------------------------------------------------------------------------
+// Chunk dispatcher — translates parser chunks into SSE events
+// ---------------------------------------------------------------------------
+
+// Encapsulates block open/close state and content accumulation so the main
+// token loop stays thin. Each call to dispatch() may enqueue multiple SSE
+// events (e.g. closing a content block before opening a thinking block).
+interface DispatchSink {
+  enqueue(event: Uint8Array): void;
+}
+
+interface ChunkDispatcherResult {
+  content: string;
+  thinking: string;
+}
+
+class ChunkDispatcher {
+  private contentBlockOpen = false;
+  private thinkingBlockOpen = false;
+  private accumulatedContent = '';
+  private accumulatedThinking = '';
+
+  constructor(private readonly sink: DispatchSink) {}
+
+  dispatch(chunk: StreamingChunk): void {
+    if (chunk.kind === 'thinking_start') {
+      // Close any open content block before opening a thinking block.
+      if (this.contentBlockOpen) {
+        this.sink.enqueue(encode({ type: 'content_block_stop' }));
+        this.contentBlockOpen = false;
+      }
+      this.sink.enqueue(encode({ type: 'thinking_block_start' }));
+      this.thinkingBlockOpen = true;
+    } else if (chunk.kind === 'thinking_stop') {
+      this.sink.enqueue(encode({ type: 'thinking_block_stop' }));
+      this.thinkingBlockOpen = false;
+    } else if (chunk.kind === 'thinking') {
+      this.accumulatedThinking += chunk.text;
+      this.sink.enqueue(encode({ type: 'thinking_delta', delta: { text: chunk.text } }));
+    } else {
+      // Lazy content_block_start: open only when first content chunk arrives.
+      if (!this.contentBlockOpen) {
+        this.sink.enqueue(encode({ type: 'content_block_start' }));
+        this.contentBlockOpen = true;
+      }
+      this.accumulatedContent += chunk.text;
+      this.sink.enqueue(encode({ type: 'content_block_delta', delta: { text: chunk.text } }));
+    }
+  }
+
+  /** Flush leftover buffer text as the appropriate delta type. */
+  flush(text: string, state: StreamingParserState): void {
+    if (text.length === 0) return;
+    if (state === 'content') {
+      this.dispatch({ kind: 'content', text });
+    } else {
+      this.dispatch({ kind: 'thinking', text });
+    }
+  }
+
+  /** Close any blocks left open at end-of-stream. */
+  closeOpenBlocks(): void {
+    if (this.thinkingBlockOpen) this.sink.enqueue(encode({ type: 'thinking_block_stop' }));
+    if (this.contentBlockOpen) this.sink.enqueue(encode({ type: 'content_block_stop' }));
+  }
+
+  result(): ChunkDispatcherResult {
+    return { content: this.accumulatedContent, thinking: this.accumulatedThinking };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
@@ -236,15 +307,9 @@ export async function POST(request: Request): Promise<Response> {
         // Stop cancels the upstream fetch rather than just closing the SSE stream.
         const tokens = await streamCompletion(messages, systemPrompt, request.signal);
 
-        // content_block_start is emitted lazily — only when the first content
-        // chunk arrives. If the stream begins with a <think> block, we emit
-        // thinking_block_start first so the client sees the correct ordering.
+        const dispatcher = new ChunkDispatcher(controller);
         let parserState: StreamingParserState = 'content';
         let parserBuffer = '';
-        let contentBlockOpen = false;
-        let thinkingBlockOpen = false;
-        let accumulatedContent = '';
-        let accumulatedThinking = '';
 
         for await (const token of tokens) {
           parserBuffer += token;
@@ -253,56 +318,16 @@ export async function POST(request: Request): Promise<Response> {
           parserBuffer = result.remaining;
 
           for (const chunk of result.chunks) {
-            if (chunk.kind === 'thinking_start') {
-              // Close any open content block before opening a thinking block.
-              if (contentBlockOpen) {
-                controller.enqueue(encode({ type: 'content_block_stop' }));
-                contentBlockOpen = false;
-              }
-              controller.enqueue(encode({ type: 'thinking_block_start' }));
-              thinkingBlockOpen = true;
-            } else if (chunk.kind === 'thinking_stop') {
-              controller.enqueue(encode({ type: 'thinking_block_stop' }));
-              thinkingBlockOpen = false;
-            } else if (chunk.kind === 'thinking') {
-              accumulatedThinking += chunk.text;
-              controller.enqueue(encode({ type: 'thinking_delta', delta: { text: chunk.text } }));
-            } else {
-              // Lazy content_block_start: open only when first content chunk arrives.
-              if (!contentBlockOpen) {
-                controller.enqueue(encode({ type: 'content_block_start' }));
-                contentBlockOpen = true;
-              }
-              accumulatedContent += chunk.text;
-              controller.enqueue(
-                encode({ type: 'content_block_delta', delta: { text: chunk.text } })
-              );
-            }
+            dispatcher.dispatch(chunk);
           }
         }
 
-        // Flush any partial tag held in the buffer at end-of-stream.
-        if (parserBuffer.length > 0) {
-          if (parserState === 'content') {
-            if (!contentBlockOpen) {
-              controller.enqueue(encode({ type: 'content_block_start' }));
-              contentBlockOpen = true;
-            }
-            accumulatedContent += parserBuffer;
-            controller.enqueue(
-              encode({ type: 'content_block_delta', delta: { text: parserBuffer } })
-            );
-          } else {
-            accumulatedThinking += parserBuffer;
-            controller.enqueue(encode({ type: 'thinking_delta', delta: { text: parserBuffer } }));
-          }
-        }
-
-        if (thinkingBlockOpen) controller.enqueue(encode({ type: 'thinking_block_stop' }));
-        if (contentBlockOpen) controller.enqueue(encode({ type: 'content_block_stop' }));
+        dispatcher.flush(parserBuffer, parserState);
+        dispatcher.closeOpenBlocks();
 
         // Persist only on successful completion. If the signal fires mid-stream,
         // streamCompletion throws before this block is reached — no DB rows written.
+        const { content: accumulatedContent, thinking: accumulatedThinking } = dispatcher.result();
         const now = Date.now();
         if (!incomingConversationId) {
           const title = firstUserContent.slice(0, 50) || 'New conversation';

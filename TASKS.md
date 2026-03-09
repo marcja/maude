@@ -255,3 +255,10 @@ page, full three-column layout with history pane on the left.
       Changes: (1) extract appendToken() helper in useStream.ts to eliminate two
         near-identical startTransition blocks; (2) lift user/assistant bubble class
         strings to named constants in MessageItem.tsx
+
+- [x] T28 — refactor(route): extract chunk dispatcher from main token loop
+      Scope: post-commit cleanup identified by analyze-refactoring after T11
+      Changes: extract the chunk-to-SSE dispatch logic (lines 255-281 of route.ts)
+        into a helper function that encapsulates block open/close state transitions,
+        reducing cognitive load in the POST handler's main loop
+      Depends: T11
