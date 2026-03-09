@@ -3,8 +3,9 @@
 /**
  * src/app/chat/page.tsx
  *
- * Single-column chat page. Wires useStream, MessageList, MessageItem, and
- * InputArea together. Auto-scroll delegated to useAutoScroll hook (T16).
+ * Single-column chat page — M2 milestone. Wires useStream, MessageList,
+ * MessageItem, InputArea, ThinkingBlock, StallIndicator, useAutoScroll,
+ * and useStallDetection together.
  *
  * Design decisions:
  *
@@ -23,13 +24,25 @@
  *   Scrolls to bottom on each token while streaming and not suspended.
  *   resetSuspension() called in handleSubmit to resume auto-scroll for
  *   new turns. Suspension threshold: >50px above bottom (SPEC §4.2).
+ *
+ * Stall detection (useStallDetection, T14):
+ *   Watches lastTokenAt from useStream; fires onStall after 8s silence.
+ *   isStalled state resets on token arrival or stream end via useEffect.
+ *
+ * Thinking blocks (ThinkingBlock, T12):
+ *   Live thinking state from useStream renders above the assistant message.
+ *   Finalized thinking data stored in history for re-display on scroll-back.
  */
 
-import { useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { InputArea } from '../../components/chat/InputArea';
 import { MessageItem } from '../../components/chat/MessageItem';
 import { MessageList } from '../../components/chat/MessageList';
+import { StallIndicator } from '../../components/chat/StallIndicator';
+import { ThinkingBlock } from '../../components/chat/ThinkingBlock';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
+import { useStallDetection } from '../../hooks/useStallDetection';
+import type { OnStreamComplete } from '../../hooks/useStream';
 import { useStream } from '../../hooks/useStream';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +54,8 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   ttft?: number | null;
+  thinkingText?: string;
+  thinkingDurationMs?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +66,34 @@ export default function ChatPage() {
   // Finalized conversation messages (user turns + completed assistant turns).
   const [history, setHistory] = useState<Message[]>([]);
 
-  const { tokens, isStreaming, ttft, error, failedMessages, send, stop } = useStream();
+  const {
+    tokens,
+    isStreaming,
+    ttft,
+    error,
+    failedMessages,
+    thinkingText,
+    isThinking,
+    thinkingDurationMs,
+    lastTokenAt,
+    send,
+    stop,
+  } = useStream();
+
+  // -------------------------------------------------------------------------
+  // Stall detection (T14/T15)
+  // -------------------------------------------------------------------------
+
+  const [isStalled, setIsStalled] = useState(false);
+  useStallDetection({ isStreaming, lastTokenAt, onStall: () => setIsStalled(true) });
+
+  // Reset isStalled when a new token arrives or streaming ends. useStallDetection
+  // only fires onStall once per stall period — the reset must happen externally
+  // so the indicator disappears on token arrival.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastTokenAt is an intentional trigger dep — its change (not value) signals token arrival
+  useEffect(() => {
+    setIsStalled(false);
+  }, [lastTokenAt, isStreaming]);
 
   // -------------------------------------------------------------------------
   // Auto-scroll (extracted to useAutoScroll in T16)
@@ -68,6 +110,30 @@ export default function ChatPage() {
   // Event handlers
   // -------------------------------------------------------------------------
 
+  // Shared onComplete callback for send() — appends the finalized assistant
+  // message to history. Used by both handleSubmit and handleRetry so the
+  // finalization logic lives in one place.
+  const appendAssistant = ({
+    tokens: t,
+    ttft: f,
+    thinkingText: tt,
+    thinkingDurationMs: td,
+  }: Parameters<OnStreamComplete>[0]) => {
+    if (t) {
+      setHistory((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: t,
+          ttft: f,
+          thinkingText: tt || undefined,
+          thinkingDurationMs: td,
+        },
+      ]);
+    }
+  };
+
   const handleSubmit = (text: string) => {
     const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: text };
     // Derive BFF context from current history + new user message. No separate
@@ -78,18 +144,7 @@ export default function ChatPage() {
     resetSuspension();
     setHistory((prev) => [...prev, userMsg]);
 
-    send(nextContext, undefined, ({ tokens: t, ttft: f }) => {
-      // onComplete is called at message_stop (and on abort) from inside send()'s
-      // async loop. React 18 automatic batching merges this setState with the
-      // isStreaming: false update into one render — the finalized assistant
-      // message and the live-message disappearance happen atomically.
-      if (t) {
-        setHistory((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: t, ttft: f },
-        ]);
-      }
-    });
+    send(nextContext, undefined, appendAssistant);
   };
 
   const handleRetry = () => {
@@ -97,14 +152,7 @@ export default function ChatPage() {
     // Re-send the same context that failed. The user message is already in
     // history from the original attempt, so onComplete only needs to append
     // the assistant reply — identical to a normal handleSubmit flow.
-    send(failedMessages, undefined, ({ tokens: t, ttft: f }) => {
-      if (t) {
-        setHistory((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: t, ttft: f },
-        ]);
-      }
-    });
+    send(failedMessages, undefined, appendAssistant);
   };
 
   const handleNewChat = () => {
@@ -123,10 +171,32 @@ export default function ChatPage() {
     <div className="chat-page flex flex-col h-screen max-w-3xl mx-auto w-full">
       <MessageList listRef={listRef} onScroll={handleScroll}>
         {history.map((m) => (
-          <MessageItem key={m.id} sender={m.role} content={m.content} ttft={m.ttft} />
+          <Fragment key={m.id}>
+            {m.role === 'assistant' && m.thinkingText && (
+              <ThinkingBlock
+                text={m.thinkingText}
+                isThinking={false}
+                durationMs={m.thinkingDurationMs ?? null}
+              />
+            )}
+            <MessageItem sender={m.role} content={m.content} ttft={m.ttft} />
+          </Fragment>
         ))}
         {isStreaming && (
-          <MessageItem sender="assistant" content={tokens} isStreaming={isStreaming} ttft={ttft} />
+          <>
+            <ThinkingBlock
+              text={thinkingText}
+              isThinking={isThinking}
+              durationMs={thinkingDurationMs}
+            />
+            <MessageItem
+              sender="assistant"
+              content={tokens}
+              isStreaming={isStreaming}
+              ttft={ttft}
+            />
+            <StallIndicator isStalled={isStalled} onCancel={stop} />
+          </>
         )}
       </MessageList>
 
