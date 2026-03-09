@@ -141,4 +141,27 @@ describe('parseSSEStream', () => {
     const events = await collect(body);
     expect(events).toEqual([{ type: 'content_block_start' }]);
   });
+
+  it('skips non-data non-comment lines (e.g. id: fields) without yielding', async () => {
+    // SSE spec allows field lines like "id: 42" or "retry: 3000" that are not
+    // "data:" lines. These must be silently skipped.
+    const body = makeStream([
+      sseChunk('id: 42', 'retry: 3000', 'data: {"type":"content_block_start"}'),
+    ]);
+    const events = await collect(body);
+    expect(events).toEqual([{ type: 'content_block_start' }]);
+  });
+
+  it('skips non-object JSON payloads (arrays, strings, numbers)', async () => {
+    // Payloads that parse to non-objects (missing 'type' field) must be skipped.
+    const body = makeStream([
+      sseChunk(
+        'data: ["not","an","object"]',
+        'data: "just a string"',
+        'data: {"type":"content_block_stop"}'
+      ),
+    ]);
+    const events = await collect(body);
+    expect(events).toEqual([{ type: 'content_block_stop' }]);
+  });
 });

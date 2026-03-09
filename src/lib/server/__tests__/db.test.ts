@@ -87,6 +87,16 @@ describe('conversations', () => {
     expect(row?.title).toBe('New title');
     expect(row?.updated_at).toBe(now + 1000);
   });
+
+  it('is a no-op when updateConversation is called with no fields', () => {
+    // Calling with an empty fields object must return early without touching the DB.
+    const { createConversation, updateConversation, getConversation } = freshDb();
+    const now = Date.now();
+    createConversation('conv-noop', 'Unchanged', now);
+    // Should not throw and must leave the row intact.
+    updateConversation('conv-noop', {});
+    expect(getConversation('conv-noop')?.title).toBe('Unchanged');
+  });
 });
 
 describe('messages', () => {

@@ -300,4 +300,54 @@ describe('POST /api/chat — DB persistence', () => {
       expect.objectContaining({ role: 'assistant', conversation_id: 'existing-id' })
     );
   });
+
+  it('uses "New conversation" as title when no user message is present', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['reply']));
+
+    // Send only an assistant message — no user message in the array.
+    const messages: ChatMessage[] = [{ role: 'assistant', content: 'Welcome' }];
+    await collectEvents(await POST(makeRequest(messages)));
+
+    expect(mockCreateConversation).toHaveBeenCalledWith(
+      expect.any(String),
+      'New conversation',
+      expect.any(Number)
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 6: Non-ModelAdapterError maps to unknown error code
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — generic error code', () => {
+  it('emits error event with code "unknown" for non-ModelAdapterError throws', async () => {
+    // A plain Error (not a ModelAdapterError) should produce code: 'unknown'.
+    mockStreamCompletion.mockRejectedValue(new Error('Something unexpected'));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toBeDefined();
+    if (errorEvent?.type === 'error') {
+      expect(errorEvent.error.code).toBe('unknown');
+      expect(errorEvent.error.message).toBe('Something unexpected');
+    }
+  });
+
+  it('uses String(err) as the error message when a non-Error is thrown', async () => {
+    // Defensive path: if something throws a non-Error (e.g., a string), the
+    // route must not crash — it calls String() to produce a message.
+    mockStreamCompletion.mockRejectedValue('raw string error');
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toBeDefined();
+    if (errorEvent?.type === 'error') {
+      expect(errorEvent.error.message).toBe('raw string error');
+    }
+  });
 });

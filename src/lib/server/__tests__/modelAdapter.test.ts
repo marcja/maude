@@ -197,4 +197,39 @@ describe('streamCompletion — bad_response', () => {
       streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal)
     ).rejects.toMatchObject({ code: 'bad_response' });
   });
+
+  it('throws ModelAdapterError with code bad_response when response body is null', async () => {
+    // Simulate a 200 response whose body has been consumed/nulled. In the browser
+    // a Response.body can be null after .body has been read; guard exists in
+    // streamCompletion before passing the body to tokenStream.
+    const nullBodyResponse = new Response(null, { status: 200 });
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(nullBodyResponse);
+
+    await expect(
+      streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal)
+    ).rejects.toMatchObject({ code: 'bad_response', message: expect.stringContaining('no body') });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7: Malformed JSON lines inside the token stream
+// ---------------------------------------------------------------------------
+
+describe('streamCompletion — malformed JSON in token stream', () => {
+  it('skips malformed JSON lines and continues yielding subsequent tokens', async () => {
+    // One bad line sandwiched between two valid ones; the bad line must be
+    // silently skipped so the surrounding tokens still arrive.
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"content":"before"}}]}',
+      'data: {not valid json',
+      'data: {"choices":[{"delta":{"content":"after"}}]}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['before', 'after']);
+  });
 });

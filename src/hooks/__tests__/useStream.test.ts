@@ -21,8 +21,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { holdHandler } from '../../mocks/handlers/hold';
 import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
+import type { OnStreamComplete } from '../useStream';
 import { useStream } from '../useStream';
 
 // ---------------------------------------------------------------------------
@@ -117,25 +119,8 @@ describe('useStream — error events', () => {
 
 describe('useStream — stop()', () => {
   it('sets isStreaming to false when stop() is called mid-stream', async () => {
-    // This handler holds the stream open, then errors it when the request
-    // signal fires. Without wiring request.signal → controller.error(), the
-    // blocked reader.read() inside parseSSEStream would never unblock and the
-    // AbortError catch path in useStream would never be reached.
-    const holdHandler = http.post('/api/chat', ({ request }) => {
-      const stream = new ReadableStream({
-        start(controller) {
-          request.signal.addEventListener(
-            'abort',
-            () => controller.error(new DOMException('The operation was aborted.', 'AbortError')),
-            { once: true }
-          );
-        },
-      });
-      return new HttpResponse(stream, {
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    });
-
+    // holdHandler holds the stream open and propagates the AbortSignal so that
+    // reader.read() inside parseSSEStream rejects, reaching the AbortError catch.
     server.use(holdHandler);
 
     const { result } = renderHook(() => useStream());
@@ -160,7 +145,96 @@ describe('useStream — stop()', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 5: initial state
+// Suite 5: onComplete callback
+// ---------------------------------------------------------------------------
+
+describe('useStream — onComplete callback', () => {
+  it('calls onComplete with final tokens and ttft when message_stop arrives', async () => {
+    server.use(normalHandler);
+
+    const { result } = renderHook(() => useStream());
+    const onComplete = jest.fn();
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hello' }], null, onComplete);
+    });
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
+    expect(callArg.tokens).toBe('Hello world');
+    expect(typeof callArg.ttft).toBe('number');
+  });
+
+  it('calls onComplete with partial tokens when stop() is called mid-stream', async () => {
+    server.use(holdHandler);
+
+    const { result } = renderHook(() => useStream());
+    const onComplete = jest.fn();
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }], null, onComplete);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    act(() => {
+      result.current.stop();
+    });
+
+    // Abort is treated as completion (not error) — onComplete fires with whatever arrived.
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
+    expect(typeof callArg.tokens).toBe('string');
+  });
+
+  it('cancels the previous in-flight request when send() is called a second time', async () => {
+    // First call stalls; second call must abort the first controller
+    // (abortRef.current?.abort()) and complete successfully with the normal handler.
+    server.use(holdHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    // Start the first request (stalls).
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'first' }]);
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+
+    // Second send() must abort the first and start fresh.
+    server.use(normalHandler);
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'second' }]);
+    });
+
+    await waitFor(() => expect(result.current.tokens).toBe('Hello world'));
+    expect(result.current.isStreaming).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 6: non-AbortError network failure
+// ---------------------------------------------------------------------------
+
+describe('useStream — network error', () => {
+  it('sets error state when fetch rejects with a non-abort error', async () => {
+    // HttpResponse.error() causes MSW to simulate a network-level failure,
+    // making fetch() reject with a TypeError. This exercises the non-AbortError
+    // catch branch in useStream (lines 187-192).
+    server.use(http.post('/api/chat', () => HttpResponse.error()));
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.isStreaming).toBe(false);
+    expect(typeof result.current.error).toBe('string');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7: initial state
 // ---------------------------------------------------------------------------
 
 describe('useStream — initial state', () => {
