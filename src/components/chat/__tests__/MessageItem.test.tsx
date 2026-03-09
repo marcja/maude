@@ -93,7 +93,25 @@ describe('MessageItem — copy button', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 4: streaming spinner
+// Suite 4: Markdown rendering (T13 upgrade)
+// ---------------------------------------------------------------------------
+
+describe('MessageItem — markdown rendering', () => {
+  it('renders assistant markdown content as rich HTML (not plain text)', () => {
+    render(<MessageItem sender="assistant" content="**bold text**" />);
+    // StreamingMarkdown wraps react-markdown, which renders **bold** as <strong>
+    expect(screen.getByText('bold text').tagName.toLowerCase()).toBe('strong');
+  });
+
+  it('renders user messages as plain text (no markdown processing)', () => {
+    render(<MessageItem sender="user" content="**not bold**" />);
+    // User messages stay as plain text — the literal asterisks are shown
+    expect(screen.getByText('**not bold**')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 5: streaming spinner
 // ---------------------------------------------------------------------------
 
 describe('MessageItem — streaming spinner', () => {

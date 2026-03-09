@@ -130,7 +130,7 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
       Test: collapsed by default; expands on click; "Thinking…" during stream;
         "Thought for Xs" on completion; never renders if no thinking events
 
-- [ ] T13 — StreamingMarkdown component
+- [x] T13 — StreamingMarkdown component
       User value: rich markdown rendering during and after streaming
       Deliverable: `src/components/chat/StreamingMarkdown.tsx`
       Depends: T06

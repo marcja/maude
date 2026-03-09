@@ -16,8 +16,12 @@
  * - Spinner is rendered as a visually-spinning span with role="status" and
  *   aria-label so screen readers announce "Streaming indicator" and tests can
  *   query by accessible label without coupling to CSS class names.
- * - Plain text rendering in T07; T13 upgrades content to react-markdown.
+ * - T13 upgraded assistant content from plain text to StreamingMarkdown for
+ *   rich Markdown rendering. User messages stay as plain text (they're user
+ *   input, not Markdown).
  */
+
+import { StreamingMarkdown } from './StreamingMarkdown';
 
 interface MessageItemProps {
   /** Who sent the message. Named 'sender' (not 'role') to avoid colliding with
@@ -43,7 +47,13 @@ export function MessageItem({ sender, content, isStreaming = false, ttft }: Mess
   const isUser = sender === 'user';
   return (
     <article className={`mb-3 max-w-2xl ${isUser ? 'ml-auto' : 'mr-auto'}`}>
-      <p className={isUser ? USER_BUBBLE : ASSISTANT_BUBBLE}>{content}</p>
+      {isUser ? (
+        <p className={USER_BUBBLE}>{content}</p>
+      ) : (
+        <div className={ASSISTANT_BUBBLE}>
+          <StreamingMarkdown content={content} />
+        </div>
+      )}
       {!isUser && (
         <footer className="mt-1 flex items-center gap-2 text-xs text-gray-400">
           {ttft != null && <span className="font-mono">↯ {Math.round(ttft)}ms</span>}
