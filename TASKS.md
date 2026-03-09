@@ -143,7 +143,7 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
       Test: timer fires after 8s with no token; resets on each token arrival;
         clears on stream end
 
-- [ ] T15 — Stall indicator component
+- [x] T15 — Stall indicator component
       User value: "Still working…" UI with Cancel option during stalls
       Deliverable: `src/components/chat/StallIndicator.tsx`
       Depends: T14
