@@ -65,11 +65,19 @@ export default function ChatPage() {
   // Scroll to bottom on each token during active streaming (unless suspended).
   // `tokens` drives re-execution on each new token; its value is not needed in
   // the body — only the fact that it changed matters.
+  //
+  // requestAnimationFrame coalesces multiple scroll updates within a single
+  // display frame, preventing redundant synchronous reflows when tokens arrive
+  // faster than the display refresh rate (60Hz = ~16ms). Without rAF, 30-50
+  // tokens/sec would each trigger a layout reflow via scrollTop assignment.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger dep
   useEffect(() => {
     if (!isStreaming || scrollSuspended) return;
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const id = requestAnimationFrame(() => {
+      const el = listRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
   }, [tokens, isStreaming, scrollSuspended]);
 
   const handleScroll = useCallback(() => {
