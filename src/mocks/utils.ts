@@ -16,3 +16,22 @@ import type { SSEEvent } from '../lib/client/events';
 export function encodeEvent(event: SSEEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
+
+/**
+ * Abortable delay: resolves after `ms` or immediately when the signal fires.
+ * Never rejects — callers check `signal.aborted` after awaiting.
+ * Used by MSW handlers that need real inter-token timing (slow, stall).
+ */
+export function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+}

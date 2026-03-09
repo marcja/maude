@@ -13,7 +13,7 @@
 
 import { http, HttpResponse } from 'msw';
 import type { SSEEvent } from '../../lib/client/events';
-import { encodeEvent } from '../utils';
+import { delay, encodeEvent } from '../utils';
 
 export const slowHandler = http.post('/api/chat', ({ request }) => {
   const encoder = new TextEncoder();
@@ -31,22 +31,7 @@ export const slowHandler = http.post('/api/chat', ({ request }) => {
           return;
         }
 
-        // Abortable delay: resolves after 100ms or immediately on abort.
-        // The Promise never rejects — abort is handled by the guard above
-        // so the loop exits cleanly on the next iteration.
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, 100);
-          // { once: true } auto-removes the listener after first fire, preventing
-          // 100 listeners from accumulating on request.signal across loop iterations.
-          request.signal.addEventListener(
-            'abort',
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true }
-          );
-        });
+        await delay(100, request.signal);
 
         if (request.signal.aborted) {
           controller.close();

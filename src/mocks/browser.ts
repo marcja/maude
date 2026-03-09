@@ -16,9 +16,13 @@
  */
 
 import { setupWorker } from 'msw/browser';
+import { markdownHandler } from './handlers/markdown';
 import { midstreamErrorHandler } from './handlers/midstream-error';
+import { midstreamErrorPartialHandler } from './handlers/midstream-error-partial';
 import { normalHandler } from './handlers/normal';
 import { slowHandler } from './handlers/slow';
+import { stallHandler } from './handlers/stall';
+import { thinkingHandler } from './handlers/thinking';
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -27,7 +31,11 @@ import { slowHandler } from './handlers/slow';
 const HANDLERS = {
   normal: normalHandler,
   'midstream-error': midstreamErrorHandler,
+  'midstream-error-partial': midstreamErrorPartialHandler,
   slow: slowHandler,
+  stall: stallHandler,
+  thinking: thinkingHandler,
+  markdown: markdownHandler,
 } as const;
 
 export type HandlerKey = keyof typeof HANDLERS;
