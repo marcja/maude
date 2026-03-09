@@ -124,7 +124,7 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
       Test: unit test with token sequences that straddle tag boundaries;
         thinking_block_start / delta / stop events emitted correctly
 
-- [ ] T12 — ThinkingBlock component
+- [x] T12 — ThinkingBlock component
       User value: collapsible "Thought for Xs" disclosure above response text
       Deliverable: `src/components/chat/ThinkingBlock.tsx`
       Test: collapsed by default; expands on click; "Thinking…" during stream;
