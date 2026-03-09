@@ -106,6 +106,15 @@ async function* tokenGen(tokens: string[]): AsyncIterable<string> {
   for (const t of tokens) yield t;
 }
 
+/** Build a raw Request with an arbitrary JSON-serialised body for validation tests. */
+function rawRequest(body: unknown): Request {
+  return new Request('http://localhost/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 // Restore mocks after each test so state doesn't bleed between suites.
 afterEach(() => {
   jest.clearAllMocks();
@@ -321,15 +330,6 @@ describe('POST /api/chat — DB persistence', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/chat — request body validation', () => {
-  /** Helper: send a raw JSON body without going through makeRequest's typed interface. */
-  function rawRequest(body: unknown): Request {
-    return new Request('http://localhost/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  }
-
   it('returns 400 when messages field is missing', async () => {
     const response = await POST(rawRequest({ conversationId: null }));
     expect(response.status).toBe(400);
@@ -531,5 +531,85 @@ describe('POST /api/chat — thinking block detection', () => {
 
     expect(collectThinkingText(events)).toBe('step one step two');
     expect(collectContentText(events)).toBe('done');
+  });
+
+  it('flushes leftover buffer as thinking delta when stream ends mid-think', async () => {
+    // Model stops generating while still inside a <think> block — the leftover
+    // buffer text must be flushed as a thinking delta (not a content delta).
+    mockStreamCompletion.mockResolvedValue(tokenGen(['<think>partial thought']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(collectThinkingText(events)).toBe('partial thought');
+    // No content should have been emitted
+    expect(collectContentText(events)).toBe('');
+    // Thinking block should still be closed at end of stream
+    expect(events.some((e) => e.type === 'thinking_block_stop')).toBe(true);
+  });
+
+  it('flushes partial open-tag buffer as content delta at end-of-stream', async () => {
+    // Stream ends while holding back a partial <think> match (e.g. "<th").
+    // The held-back text must be flushed as a content delta, not swallowed.
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hello <th']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(collectContentText(events)).toBe('Hello <th');
+    expect(collectThinkingText(events)).toBe('');
+  });
+
+  it('flushes partial close-tag buffer as thinking delta at end-of-stream', async () => {
+    // Stream ends while holding back a partial </think> match (e.g. "</th").
+    // The held-back text must be flushed as a thinking delta, not swallowed.
+    mockStreamCompletion.mockResolvedValue(tokenGen(['<think>reason</th']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    // "reason" arrives as thinking delta during parsing; "</th" is held back
+    // as a potential partial tag, then flushed as thinking delta at end-of-stream.
+    expect(collectThinkingText(events)).toBe('reason</th');
+    expect(collectContentText(events)).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 9: Additional validation edge cases
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — validation edge cases', () => {
+  it('returns 400 when body is a non-object (string)', async () => {
+    const response = await POST(rawRequest('just a string'));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/object/i);
+  });
+
+  it('returns 400 when body is null', async () => {
+    const response = await POST(rawRequest(null));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/object/i);
+  });
+
+  it('returns 400 when a message element is not an object', async () => {
+    const response = await POST(rawRequest({ messages: ['not-an-object'] }));
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string };
+    expect(json.error).toMatch(/message/i);
+  });
+
+  it('rethrows non-ValidationError from request.json()', async () => {
+    // When request.json() throws a non-ValidationError (e.g. invalid JSON),
+    // the catch block should rethrow rather than returning a 400.
+    const request = new Request('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not valid json{{{',
+    });
+
+    await expect(POST(request)).rejects.toThrow();
   });
 });
