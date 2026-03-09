@@ -155,7 +155,8 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
       Test: scrolls to bottom during streaming; suspends if user scrolls >50px
         up; resumes on return to bottom; "↓ New content" button state
 
-- [ ] T17 — Wire Phase 2 components into chat page
+- [x] T17 — Wire Phase 2 components into chat page
+      Note: addressed over five incremental commits (T17A–T17E)
       User value: **M2 milestone** — full streaming behavior in the running app
       Deliverable: update `chat/page.tsx` to use ThinkingBlock, StreamingMarkdown,
         StallIndicator, useAutoScroll
