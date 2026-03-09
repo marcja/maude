@@ -16,7 +16,7 @@
  *   the specific `.chat__error` class selector to avoid ambiguity.
  */
 
-import { expect, resetMSWHandlers, test, useMSWHandler } from './fixtures';
+import { expect, resetMSWHandlers, sendChatMessage, test, useMSWHandler } from './fixtures';
 
 test.afterEach(async ({ page }) => {
   // Remove any test-specific handler so the next test starts clean.
@@ -28,11 +28,7 @@ test.afterEach(async ({ page }) => {
 // ---------------------------------------------------------------------------
 
 test('happy path: message sent → tokens stream → response shown', async ({ page }) => {
-  await page.goto('/chat');
-  await useMSWHandler(page, 'normal');
-
-  await page.fill('[aria-label="Message input"]', 'Hi');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'normal', 'Hi');
 
   // normalHandler emits "Hello" + " world"
   await expect(page.getByText('Hello world')).toBeVisible();
@@ -46,11 +42,7 @@ test('happy path: message sent → tokens stream → response shown', async ({ p
 // ---------------------------------------------------------------------------
 
 test('cancellation: stop mid-stream shows partial response', async ({ page }) => {
-  await page.goto('/chat');
-  await useMSWHandler(page, 'slow'); // 100 tokens × 100ms
-
-  await page.fill('[aria-label="Message input"]', 'Hello');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'slow', 'Hello'); // 100 tokens × 100ms
 
   // Wait for at least the first token to render before stopping.
   // slowHandler emits "word0 " first, then "word1 ", etc.
@@ -141,11 +133,7 @@ test('auto-scroll: scrolls to bottom; manual scroll shows "↓ New content"', as
 // ---------------------------------------------------------------------------
 
 test('error display: model error shows message and re-enables Send', async ({ page }) => {
-  await page.goto('/chat');
-  await useMSWHandler(page, 'midstream-error');
-
-  await page.fill('[aria-label="Message input"]', 'Hello');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'midstream-error', 'Hello');
 
   // midstreamErrorHandler emits an error event with message "Stream failed".
   // Use the specific class selector — Next.js also renders a role="alert"

@@ -38,4 +38,19 @@ export async function resetMSWHandlers(page: Page): Promise<void> {
   await page.evaluate(() => window.__msw?.reset());
 }
 
+/**
+ * Navigates to /chat, activates an MSW handler, types a message, and submits.
+ * Consolidates the 4-step setup pattern shared by all chat E2E tests.
+ */
+export async function sendChatMessage(
+  page: Page,
+  handler: HandlerKey,
+  text: string
+): Promise<void> {
+  await page.goto('/chat');
+  await useMSWHandler(page, handler);
+  await page.fill('[aria-label="Message input"]', text);
+  await page.keyboard.press('Enter');
+}
+
 export { test, expect };

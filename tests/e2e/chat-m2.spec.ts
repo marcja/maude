@@ -10,7 +10,7 @@
  *   4. Markdown: fenced code block renders correctly
  */
 
-import { expect, resetMSWHandlers, test, useMSWHandler } from './fixtures';
+import { expect, resetMSWHandlers, sendChatMessage, test } from './fixtures';
 
 test.afterEach(async ({ page }) => {
   await resetMSWHandlers(page);
@@ -26,11 +26,7 @@ test('stall detection: "Still working…" appears after 8s silence, Cancel abort
   // This test waits 8+ seconds for the stall threshold to fire.
   test.slow();
 
-  await page.goto('/chat');
-  await useMSWHandler(page, 'stall');
-
-  await page.fill('[aria-label="Message input"]', 'Hello');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'stall', 'Hello');
 
   // stallHandler emits "tok0 " through "tok4 " at 100ms intervals, then pauses 10s.
   await expect(page.getByText(/tok0/)).toBeVisible({ timeout: 5000 });
@@ -53,11 +49,7 @@ test('stall detection: "Still working…" appears after 8s silence, Cancel abort
 // ---------------------------------------------------------------------------
 
 test('mid-stream error: error bar shown with Retry button', async ({ page }) => {
-  await page.goto('/chat');
-  await useMSWHandler(page, 'midstream-error-partial');
-
-  await page.fill('[aria-label="Message input"]', 'Hello');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'midstream-error-partial', 'Hello');
 
   // Error event arrives after 10 tokens. The error bar should appear.
   await expect(page.locator('.chat__error')).toContainText('Stream failed', { timeout: 5000 });
@@ -74,11 +66,7 @@ test('mid-stream error: error bar shown with Retry button', async ({ page }) => 
 // ---------------------------------------------------------------------------
 
 test('thinking blocks: ThinkingBlock renders, collapses, and expands', async ({ page }) => {
-  await page.goto('/chat');
-  await useMSWHandler(page, 'thinking');
-
-  await page.fill('[aria-label="Message input"]', 'Think');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'thinking', 'Think');
 
   // thinkingHandler emits thinking deltas then "The answer is 42."
   await expect(page.getByText('The answer is 42.')).toBeVisible({ timeout: 5000 });
@@ -102,11 +90,7 @@ test('thinking blocks: ThinkingBlock renders, collapses, and expands', async ({ 
 // ---------------------------------------------------------------------------
 
 test('markdown: fenced code block renders correctly', async ({ page }) => {
-  await page.goto('/chat');
-  await useMSWHandler(page, 'markdown');
-
-  await page.fill('[aria-label="Message input"]', 'Code');
-  await page.keyboard.press('Enter');
+  await sendChatMessage(page, 'markdown', 'Code');
 
   // markdownHandler emits content with a JS code fence then "Done."
   await expect(page.getByText('Done.')).toBeVisible({ timeout: 5000 });
