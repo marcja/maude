@@ -62,14 +62,18 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
   const isEmpty = value.trim().length === 0;
 
   return (
-    <div className="input-area">
+    <div className="flex items-end gap-2 border-t border-gray-200 bg-white px-4 py-3">
       {onNewChat != null && (
-        <button type="button" onClick={onNewChat} className="input-area__new-chat">
+        <button
+          type="button"
+          onClick={onNewChat}
+          className="shrink-0 appearance-none rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-200"
+        >
           New chat
         </button>
       )}
       <textarea
-        className="input-area__textarea"
+        className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -77,7 +81,11 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
         rows={1}
       />
       {isStreaming ? (
-        <button type="button" onClick={onStop} className="input-area__stop">
+        <button
+          type="button"
+          onClick={onStop}
+          className="shrink-0 rounded-xl bg-red-500 px-4 py-2 text-sm text-white transition-colors hover:bg-red-600"
+        >
           Stop
         </button>
       ) : (
@@ -85,7 +93,7 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
           type="button"
           onClick={handleSubmit}
           disabled={isEmpty}
-          className="input-area__submit"
+          className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Send message"
         >
           Send

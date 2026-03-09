@@ -97,7 +97,8 @@ end-to-end slice that proves the streaming pipeline works.
       Test: abort mid-stream cancels Ollama fetch and writes no DB row;
         completed stream writes conversation + messages to DB with title
 
-- [ ] T10 — Minimal chat page (single-column)
+- [x] T10 — Minimal chat page (single-column)
+      Note: split into two commits — T10A (MSW browser infrastructure) and T10B (chat page + E2E tests)
       User value: **M1 milestone** — app is runnable; type a message, see streaming
       Deliverable: `src/app/chat/page.tsx` (no history pane, no debug pane;
         MessageList + InputArea wired to useStream; minimal layout)
@@ -248,3 +249,9 @@ page, full three-column layout with history pane on the left.
       Depends: T01
       Test: GET returns conversation list; DELETE removes conversation and messages;
         GET /[id] returns messages for a conversation
+
+- [x] T27 — refactor(T10B): deduplicate startTransition + extract className constants
+      Scope: post-commit cleanup identified by analyze-refactoring after T10B
+      Changes: (1) extract appendToken() helper in useStream.ts to eliminate two
+        near-identical startTransition blocks; (2) lift user/assistant bubble class
+        strings to named constants in MessageItem.tsx

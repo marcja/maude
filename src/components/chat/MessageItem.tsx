@@ -30,16 +30,26 @@ interface MessageItemProps {
   ttft?: number | null;
 }
 
+// Named constants keep the JSX ternary readable and make it easy to find all
+// styling for a given bubble variant in one place.
+const USER_BUBBLE =
+  'rounded-2xl rounded-br-sm bg-blue-600 px-4 py-2 text-white whitespace-pre-wrap';
+// min-h-[2.5rem]: prevents the bubble from collapsing to near-zero height
+// while content is empty at the start of a stream.
+const ASSISTANT_BUBBLE =
+  'rounded-2xl rounded-bl-sm bg-gray-100 px-4 py-2 text-gray-900 whitespace-pre-wrap min-h-[2.5rem]';
+
 export function MessageItem({ sender, content, isStreaming = false, ttft }: MessageItemProps) {
+  const isUser = sender === 'user';
   return (
-    <article className={`message message--${sender}`}>
-      <p className="message__content">{content}</p>
-      {sender === 'assistant' && (
-        <footer className="message__footer">
-          {ttft != null && <span className="message__ttft-badge">↯ {Math.round(ttft)}ms</span>}
+    <article className={`mb-3 max-w-2xl ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+      <p className={isUser ? USER_BUBBLE : ASSISTANT_BUBBLE}>{content}</p>
+      {!isUser && (
+        <footer className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+          {ttft != null && <span className="font-mono">↯ {Math.round(ttft)}ms</span>}
           <button
             type="button"
-            className="message__copy-btn"
+            className="cursor-pointer transition-colors hover:text-gray-600"
             aria-label="Copy response"
             onClick={() => {
               // Fire-and-forget: no UI feedback in T07; a future task adds
@@ -50,7 +60,11 @@ export function MessageItem({ sender, content, isStreaming = false, ttft }: Mess
             Copy
           </button>
           {isStreaming && (
-            <span role="status" aria-label="Streaming indicator" className="message__spinner" />
+            <span
+              role="status"
+              aria-label="Streaming indicator"
+              className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500"
+            />
           )}
         </footer>
       )}

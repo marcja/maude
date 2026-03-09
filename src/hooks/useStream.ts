@@ -12,9 +12,12 @@
  *   reads from the ref and from its own arguments — no captured state.
  * - Each event type maps to a fine-grained setState call so React can batch
  *   contiguous delta events in concurrent mode (future-proofing with no cost).
+ * - tokensAccRef/ttftRef mirror accumulated values synchronously so onComplete
+ *   can receive the final result without depending on React state (which is
+ *   async due to startTransition).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { startTransition, useCallback, useRef, useState } from 'react';
 import { parseSSEStream } from '../lib/client/sseParser';
 
 // ---------------------------------------------------------------------------
@@ -42,8 +45,16 @@ export interface StreamState {
   error: string | null;
 }
 
+/** Called when a stream ends naturally (message_stop) or via user abort.
+ *  Not called on error — the caller should inspect the returned `error` state. */
+export type OnStreamComplete = (result: { tokens: string; ttft: number | null }) => void;
+
 type UseStreamResult = StreamState & {
-  send: (messages: ChatMessage[], conversationId?: string | null) => void;
+  send: (
+    messages: ChatMessage[],
+    conversationId?: string | null,
+    onComplete?: OnStreamComplete
+  ) => void;
   stop: () => void;
 };
 
@@ -65,100 +76,131 @@ export function useStream(): UseStreamResult {
   // of the send useCallback and without triggering a render on assignment.
   const abortRef = useRef<AbortController | null>(null);
 
+  // Accumulator refs: mirror the values written to state so onComplete can
+  // receive the final result synchronously. startTransition makes React state
+  // updates async, so we cannot read them immediately after the stream ends.
+  const tokensAccRef = useRef('');
+  const ttftRef = useRef<number | null>(null);
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  const send = useCallback(async (messages: ChatMessage[], conversationId?: string | null) => {
-    // Cancel any in-flight request before starting a new one so a user who
-    // rapidly submits does not receive interleaved responses.
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const send = useCallback(
+    async (
+      messages: ChatMessage[],
+      conversationId?: string | null,
+      onComplete?: OnStreamComplete
+    ) => {
+      // Cancel any in-flight request before starting a new one so a user who
+      // rapidly submits does not receive interleaved responses.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    // Reset to a clean streaming state synchronously — components see
-    // isStreaming: true on the very next render after send() is called.
-    setState({ ...INITIAL_STATE, isStreaming: true });
+      // Reset to a clean streaming state synchronously — components see
+      // isStreaming: true on the very next render after send() is called.
+      setState({ ...INITIAL_STATE, isStreaming: true });
+      tokensAccRef.current = '';
+      ttftRef.current = null;
 
-    // Record start time for TTFT calculation (wall-clock performance timer,
-    // not Date.now(), so it isn't affected by system clock adjustments).
-    const startTime = performance.now();
-    let firstTokenReceived = false;
+      // Record start time for TTFT calculation (wall-clock performance timer,
+      // not Date.now(), so it isn't affected by system clock adjustments).
+      const startTime = performance.now();
+      let firstTokenReceived = false;
 
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, conversationId: conversationId ?? null }),
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages, conversationId: conversationId ?? null }),
+          signal: controller.signal,
+        });
 
-      if (!response.body) throw new Error('Response body is null');
+        if (!response.body) throw new Error('Response body is null');
 
-      for await (const event of parseSSEStream(response.body)) {
-        // Check abort between events so we don't process stale data after
-        // the user has already clicked Stop and a new request may be starting.
-        if (controller.signal.aborted) break;
+        for await (const event of parseSSEStream(response.body)) {
+          // Check abort between events so we don't process stale data after
+          // the user has already clicked Stop and a new request may be starting.
+          if (controller.signal.aborted) break;
 
-        switch (event.type) {
-          case 'content_block_delta': {
-            // TTFT is measured at first visible token, not at message_start,
-            // because message_start arrives before any content and would give
-            // a misleadingly short latency number.
-            if (!firstTokenReceived) {
-              firstTokenReceived = true;
-              const ttft = performance.now() - startTime;
+          switch (event.type) {
+            case 'content_block_delta': {
+              // Mirror into ref so onComplete has the final value synchronously.
+              tokensAccRef.current += event.delta.text;
+              // TTFT is measured at first visible token, not at message_start,
+              // because message_start arrives before any content and would give
+              // a misleadingly short latency number.
+              let newTtft: number | undefined;
+              if (!firstTokenReceived) {
+                firstTokenReceived = true;
+                newTtft = performance.now() - startTime;
+                ttftRef.current = newTtft;
+              }
+              // startTransition marks token accumulation as non-urgent so the
+              // browser can prioritize user interactions (Stop button clicks,
+              // scroll events) over rendering the next token. Without this,
+              // heavy streaming can make the UI feel unresponsive to input.
+              startTransition(() => {
+                setState((prev) => ({
+                  ...prev,
+                  tokens: prev.tokens + event.delta.text,
+                  ...(newTtft !== undefined ? { ttft: newTtft } : {}),
+                }));
+              });
+              break;
+            }
+
+            case 'message_stop':
+              setState((prev) => ({ ...prev, isStreaming: false }));
+              // React 18 automatic batching: onComplete's setState calls batch
+              // with the isStreaming: false update above into one render, so
+              // the finalized message appears atomically without a flicker frame.
+              onComplete?.({ tokens: tokensAccRef.current, ttft: ttftRef.current });
+              break;
+
+            case 'error':
               setState((prev) => ({
                 ...prev,
-                ttft,
-                tokens: prev.tokens + event.delta.text,
+                isStreaming: false,
+                error: event.error.message,
               }));
-            } else {
-              setState((prev) => ({ ...prev, tokens: prev.tokens + event.delta.text }));
-            }
-            break;
+              // No onComplete on error — caller inspects the error state instead.
+              break;
+
+            // message_start, content_block_start/stop, thinking_* — no state
+            // changes at this layer for the minimal hook; Phase 2 adds thinking.
+            default:
+              break;
           }
-
-          case 'message_stop':
-            setState((prev) => ({ ...prev, isStreaming: false }));
-            break;
-
-          case 'error':
-            setState((prev) => ({
-              ...prev,
-              isStreaming: false,
-              error: event.error.message,
-            }));
-            break;
-
-          // message_start, content_block_start/stop, thinking_* — no state
-          // changes at this layer for the minimal hook; Phase 2 adds thinking.
-          default:
-            break;
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          // User-initiated cancellation is not an error — clear streaming flag
+          // but leave tokens and error in their current state so partial content
+          // remains visible.
+          setState((prev) => ({ ...prev, isStreaming: false }));
+          // Finalize partial content into history — abort is intentional, not
+          // a failure, and the user should see what arrived before they stopped.
+          onComplete?.({ tokens: tokensAccRef.current, ttft: ttftRef.current });
+        } else {
+          setState((prev) => ({
+            ...prev,
+            isStreaming: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          }));
+        }
+      } finally {
+        // Release the controller reference so the AbortController can be GC'd
+        // immediately after the request lifecycle ends (successful or not).
+        // Without this, it would linger until the next send() overwrites the ref.
+        if (abortRef.current === controller) {
+          abortRef.current = null;
         }
       }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        // User-initiated cancellation is not an error — clear streaming flag
-        // but leave tokens and error in their current state so partial content
-        // remains visible.
-        setState((prev) => ({ ...prev, isStreaming: false }));
-      } else {
-        setState((prev) => ({
-          ...prev,
-          isStreaming: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        }));
-      }
-    } finally {
-      // Release the controller reference so the AbortController can be GC'd
-      // immediately after the request lifecycle ends (successful or not).
-      // Without this, it would linger until the next send() overwrites the ref.
-      if (abortRef.current === controller) {
-        abortRef.current = null;
-      }
-    }
-  }, []);
+    },
+    []
+  );
 
   return { ...state, send, stop };
 }

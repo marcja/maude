@@ -56,7 +56,14 @@ db.pragma('foreign_keys = ON');
 // Run the migration synchronously at module load time. Using readFileSync here
 // (rather than a dynamic import or require) keeps the initialization path simple
 // and avoids introducing async state into module startup.
-const migrationSql = fs.readFileSync(path.join(__dirname, 'migrations', '001_initial.sql'), 'utf8');
+//
+// process.cwd() instead of __dirname: Next.js webpack rewrites __dirname to
+// the bundle output directory, making it point to .next/ rather than src/.
+// process.cwd() reliably gives the project root in both dev and production.
+const migrationSql = fs.readFileSync(
+  path.join(process.cwd(), 'src', 'lib', 'server', 'migrations', '001_initial.sql'),
+  'utf8'
+);
 db.exec(migrationSql);
 
 // ---------------------------------------------------------------------------
