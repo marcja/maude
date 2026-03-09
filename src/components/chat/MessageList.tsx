@@ -17,7 +17,7 @@ import type { RefObject } from 'react';
 
 interface MessageListProps {
   /** Ref owned by the parent for imperative scroll control. */
-  listRef: RefObject<HTMLDivElement>;
+  listRef: RefObject<HTMLDivElement | null>;
   /** Called on every native scroll event; parent updates suspension state. */
   onScroll: () => void;
   children: React.ReactNode;
