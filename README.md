@@ -7,13 +7,15 @@
 | Layer | Technology |
 |-------|-----------|
 | Framework | Next.js 16 (App Router) |
-| UI | React 18 (Concurrent Features) |
+| UI | React 19 (Concurrent Features) |
 | Language | TypeScript (strict mode, no `any`) |
 | Database | SQLite via better-sqlite3 |
 | LLM backend | Ollama (OpenAI-compatible API) |
 | Linting/formatting | Biome |
 | Unit tests | Jest + MSW 2.0 |
 | E2E tests | Playwright + MSW browser worker |
+| Styling | Tailwind CSS |
+| Markdown | react-markdown + remark-gfm |
 | Package manager | pnpm |
 
 ## Architecture
@@ -25,7 +27,10 @@
 │  React Components ──► useStream hook ──► sseParser      │
 │  (InputArea,          (fetch, abort,    (ReadableStream  │
 │   MessageList,         state machine)    → SSEEvent[])   │
-│   MessageItem)                                          │
+│   MessageItem,                                          │
+│   ThinkingBlock,     useStallDetection  useAutoScroll   │
+│   StreamingMarkdown,  (8s timeout)       (scroll mgmt)  │
+│   StallIndicator)                                       │
 └────────────────────────────┬────────────────────────────┘
                              │ POST /api/chat (SSE)
 ┌────────────────────────────▼────────────────────────────┐
@@ -35,6 +40,7 @@
 │  • Composes system prompt via promptBuilder              │
 │  • Streams tokens from Ollama via modelAdapter           │
 │  • Translates Ollama format → Anthropic-style SSE events │
+│  • Detects <think> tags → emits thinking block events    │
 │  • Persists conversation + messages on completion        │
 │  • Propagates abort signal to cancel upstream fetch      │
 └────────────────────────────┬────────────────────────────┘
@@ -57,7 +63,7 @@ A strict client/server boundary is enforced: no client component may import from
 
 **Typed event protocol.** `SSEEvent` is a discriminated union (`message_start`, `content_block_delta`, `error`, etc.) enabling exhaustive type checking across the entire client-side pipeline: parser, hook, and components.
 
-**React 18 concurrent features.** `startTransition` wraps token accumulation so user interactions (e.g. Stop button) are never blocked by rendering. Every concurrent-feature usage has a comment explaining *why* it's needed at that specific call site.
+**React 19 concurrent features.** `startTransition` wraps token accumulation so user interactions (e.g. Stop button) are never blocked by rendering. Every concurrent-feature usage has a comment explaining *why* it's needed at that specific call site.
 
 **Single-file model adapter.** `modelAdapter.ts` is the only file that reads `OLLAMA_BASE_URL` or `MODEL_NAME`. Swapping LLM backends means editing one file.
 
@@ -104,7 +110,7 @@ pnpm lint:fix
 |-----------|-------------|--------|
 | M0 | Dev environment setup | Done |
 | M1 | Minimal viable chat — streaming, cancellation, auto-scroll | Done |
-| M2 | Streaming polish — thinking blocks, markdown, stall detection | Planned |
+| M2 | Streaming polish — thinking blocks, markdown, stall detection | Done |
 | M3 | Observability — debug pane with metrics, events, system prompt | Planned |
 | M4 | Full app — history, settings, welcome page, conversation API | Planned |
 
