@@ -101,6 +101,9 @@ const stmtGetMessages = db.prepare(
 // ---------------------------------------------------------------------------
 
 export function getSettings(): UserSettings {
+  // better-sqlite3's .all() returns `unknown[]` because the library cannot
+  // infer column types from SQL strings. The shape is guaranteed by the
+  // settings table schema (key TEXT, value TEXT) defined in 001_initial.sql.
   const rows = stmtGetSettings.all() as { key: string; value: string }[];
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   return {
@@ -144,10 +147,14 @@ export function updateConversation(
 }
 
 export function getConversations(): ConversationRow[] {
+  // better-sqlite3 returns `unknown[]`; shape matches the conversations table
+  // schema (id, title, created_at, updated_at) defined in 001_initial.sql.
   return stmtGetConversations.all() as ConversationRow[];
 }
 
 export function getConversation(id: string): ConversationRow | undefined {
+  // better-sqlite3's .get() returns `unknown`; the WHERE clause guarantees at
+  // most one row, and the shape matches ConversationRow from 001_initial.sql.
   return stmtGetConversation.get(id) as ConversationRow | undefined;
 }
 
@@ -171,5 +178,7 @@ export function insertMessage(msg: MessageRow): void {
 }
 
 export function getMessages(conversationId: string): MessageRow[] {
+  // better-sqlite3 returns `unknown[]`; shape matches the messages table
+  // schema (id, conversation_id, role, content, thinking, created_at).
   return stmtGetMessages.all(conversationId) as MessageRow[];
 }
