@@ -24,6 +24,7 @@ import { setupServer } from 'msw/node';
 import { holdHandler } from '../../mocks/handlers/hold';
 import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
+import { thinkingHandler } from '../../mocks/handlers/thinking';
 import type { OnStreamComplete } from '../useStream';
 import { useStream } from '../useStream';
 
@@ -391,5 +392,110 @@ describe('useStream — failedMessages', () => {
     await waitFor(() => expect(result.current.isStreaming).toBe(false));
     expect(result.current.failedMessages).toBeNull();
     expect(result.current.error).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 10: thinking events
+// ---------------------------------------------------------------------------
+
+describe('useStream — thinking events', () => {
+  it('accumulates thinking_delta text into thinkingText', async () => {
+    server.use(thinkingHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Think' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.thinkingText).toBe('Step 1: analyze.\nStep 2: compute.\n');
+  });
+
+  it('sets isThinking true during thinking block, false after stop', async () => {
+    server.use(thinkingHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Think' }]);
+    });
+
+    // After stream completes, isThinking should be false
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.isThinking).toBe(false);
+  });
+
+  it('records thinkingDurationMs after thinking_block_stop', async () => {
+    server.use(thinkingHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Think' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.thinkingDurationMs).not.toBeNull();
+    expect(typeof result.current.thinkingDurationMs).toBe('number');
+    // Duration should be non-negative (synchronous handler → very small but >= 0)
+    expect(result.current.thinkingDurationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('thinkingText is empty when no thinking events occur', async () => {
+    server.use(normalHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hello' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.thinkingText).toBe('');
+    expect(result.current.isThinking).toBe(false);
+    expect(result.current.thinkingDurationMs).toBeNull();
+  });
+
+  it('passes thinkingText and thinkingDurationMs to onComplete', async () => {
+    server.use(thinkingHandler);
+
+    const { result } = renderHook(() => useStream());
+    const onComplete = jest.fn();
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Think' }], null, onComplete);
+    });
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
+    expect(callArg.thinkingText).toBe('Step 1: analyze.\nStep 2: compute.\n');
+    expect(typeof callArg.thinkingDurationMs).toBe('number');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 11: lastTokenAt
+// ---------------------------------------------------------------------------
+
+describe('useStream — lastTokenAt', () => {
+  it('sets lastTokenAt to a non-null timestamp after content_block_delta', async () => {
+    server.use(normalHandler);
+
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hello' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.lastTokenAt).not.toBeNull();
+    expect(typeof result.current.lastTokenAt).toBe('number');
+  });
+
+  it('lastTokenAt is null before first content delta', () => {
+    const { result } = renderHook(() => useStream());
+    expect(result.current.lastTokenAt).toBeNull();
   });
 });

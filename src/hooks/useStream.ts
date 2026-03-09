@@ -48,11 +48,26 @@ export interface StreamState {
    *  after a successful send() clears the previous failure. Not set on abort —
    *  abort is intentional, not a failure worth retrying. */
   failedMessages: ChatMessage[] | null;
+  /** Accumulated reasoning text from thinking_delta events. Empty string when no
+   *  thinking block was emitted. */
+  thinkingText: string;
+  /** True while thinking_block_start has fired but thinking_block_stop has not. */
+  isThinking: boolean;
+  /** Wall-clock duration (ms) of the thinking block; null until thinking_block_stop. */
+  thinkingDurationMs: number | null;
+  /** Timestamp (Date.now()) of the most recent content_block_delta. Null before
+   *  the first content token. Used by useStallDetection to detect pauses. */
+  lastTokenAt: number | null;
 }
 
 /** Called when a stream ends naturally (message_stop) or via user abort.
  *  Not called on error — the caller should inspect the returned `error` state. */
-export type OnStreamComplete = (result: { tokens: string; ttft: number | null }) => void;
+export type OnStreamComplete = (result: {
+  tokens: string;
+  ttft: number | null;
+  thinkingText: string;
+  thinkingDurationMs: number | null;
+}) => void;
 
 type UseStreamResult = StreamState & {
   send: (
@@ -69,6 +84,10 @@ const INITIAL_STATE: StreamState = {
   ttft: null,
   error: null,
   failedMessages: null,
+  thinkingText: '',
+  isThinking: false,
+  thinkingDurationMs: null,
+  lastTokenAt: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -87,6 +106,9 @@ export function useStream(): UseStreamResult {
   // updates async, so we cannot read them immediately after the stream ends.
   const tokensAccRef = useRef('');
   const ttftRef = useRef<number | null>(null);
+  const thinkingTextRef = useRef('');
+  const thinkingDurationRef = useRef<number | null>(null);
+  const thinkingStartRef = useRef<number | null>(null);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -109,6 +131,19 @@ export function useStream(): UseStreamResult {
       setState({ ...INITIAL_STATE, isStreaming: true });
       tokensAccRef.current = '';
       ttftRef.current = null;
+      thinkingTextRef.current = '';
+      thinkingDurationRef.current = null;
+      thinkingStartRef.current = null;
+
+      // Build the onComplete result from accumulator refs. Defined inside
+      // send() so it's captured in the closure without appearing in the
+      // useCallback dependency array (refs are stable across renders).
+      const buildResult = () => ({
+        tokens: tokensAccRef.current,
+        ttft: ttftRef.current,
+        thinkingText: thinkingTextRef.current,
+        thinkingDurationMs: thinkingDurationRef.current,
+      });
 
       // Record start time for TTFT calculation (wall-clock performance timer,
       // not Date.now(), so it isn't affected by system clock adjustments).
@@ -143,6 +178,11 @@ export function useStream(): UseStreamResult {
             case 'content_block_delta': {
               // Mirror into ref so onComplete has the final value synchronously.
               tokensAccRef.current += event.delta.text;
+              // Date.now() (not performance.now()) because useStallDetection
+              // compares this against future Date.now() calls — both sides must
+              // use the same clock. performance.now() is reserved for duration
+              // measurements (TTFT, thinking block) where monotonicity matters.
+              const now = Date.now();
               // TTFT is measured at first visible token, not at message_start,
               // because message_start arrives before any content and would give
               // a misleadingly short latency number.
@@ -160,9 +200,41 @@ export function useStream(): UseStreamResult {
                 setState((prev) => ({
                   ...prev,
                   tokens: prev.tokens + event.delta.text,
+                  lastTokenAt: now,
                   ...(newTtft !== undefined ? { ttft: newTtft } : {}),
                 }));
               });
+              break;
+            }
+
+            case 'thinking_block_start':
+              thinkingStartRef.current = performance.now();
+              setState((prev) => ({ ...prev, isThinking: true }));
+              break;
+
+            case 'thinking_delta':
+              thinkingTextRef.current += event.delta.text;
+              // startTransition: same non-urgent priority as content deltas —
+              // thinking text accumulation should not block user interactions.
+              startTransition(() => {
+                setState((prev) => ({
+                  ...prev,
+                  thinkingText: prev.thinkingText + event.delta.text,
+                }));
+              });
+              break;
+
+            case 'thinking_block_stop': {
+              const duration =
+                thinkingStartRef.current !== null
+                  ? performance.now() - thinkingStartRef.current
+                  : null;
+              thinkingDurationRef.current = duration;
+              setState((prev) => ({
+                ...prev,
+                isThinking: false,
+                thinkingDurationMs: duration,
+              }));
               break;
             }
 
@@ -171,7 +243,7 @@ export function useStream(): UseStreamResult {
               // React 18 automatic batching: onComplete's setState calls batch
               // with the isStreaming: false update above into one render, so
               // the finalized message appears atomically without a flicker frame.
-              onComplete?.({ tokens: tokensAccRef.current, ttft: ttftRef.current });
+              onComplete?.(buildResult());
               break;
 
             case 'error':
@@ -184,8 +256,7 @@ export function useStream(): UseStreamResult {
               // No onComplete on error — caller inspects the error state instead.
               break;
 
-            // message_start, content_block_start/stop, thinking_* — no state
-            // changes at this layer for the minimal hook; Phase 2 adds thinking.
+            // message_start, content_block_start/stop — no state changes needed.
             default:
               break;
           }
@@ -198,7 +269,10 @@ export function useStream(): UseStreamResult {
           setState((prev) => ({ ...prev, isStreaming: false }));
           // Finalize partial content into history — abort is intentional, not
           // a failure, and the user should see what arrived before they stopped.
-          onComplete?.({ tokens: tokensAccRef.current, ttft: ttftRef.current });
+          // Note: if abort occurs mid-thinking, isThinking remains true in state
+          // until the next send() resets via INITIAL_STATE. Consumers should
+          // check isStreaming before relying on isThinking.
+          onComplete?.(buildResult());
         } else {
           setState((prev) => ({
             ...prev,
