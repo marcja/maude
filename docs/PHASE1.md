@@ -111,7 +111,7 @@ async function* tokenStream(body: ReadableStream<Uint8Array>): AsyncIterable<str
 }
 ```
 
-This pattern — buffer incoming bytes, split on newlines, keep the last incomplete line for the next chunk — appears in two places in the codebase (here and in the client-side SSE parser). It's the fundamental technique for reading a streaming text protocol from a `ReadableStream`. The buffer exists because network chunks don't align with logical message boundaries: a single SSE event might arrive split across two TCP packets, or three events might arrive in one chunk.
+This pattern — buffer incoming bytes, split on newlines, keep the last incomplete line for the next chunk — appears in two places in the codebase (here and in the client-side SSE parser). It's the fundamental technique for reading any line-delimited streaming protocol from a `ReadableStream`. You'll use the same pattern for NDJSON (newline-delimited JSON, common in logging and event pipelines), CSV streams, log tailing, and any protocol where messages are separated by newlines. The buffer exists because network chunks don't align with logical message boundaries: a single SSE event might arrive split across two TCP packets, or three events might arrive in one chunk.
 
 The `finally` block is important too. `reader.releaseLock()` ensures the `ReadableStream` can be garbage collected even if the consumer breaks out of the `for await` loop early — which is exactly what happens when the user clicks Stop.
 
@@ -235,6 +235,8 @@ export function useStream(): {
 
 Components call `send()` to start a request and `stop()` to cancel it. The hook manages everything in between: creating the `AbortController`, making the fetch, parsing SSE events, accumulating tokens into state, measuring TTFT, and cleaning up.
 
+One critical detail: `send()` begins by aborting any in-flight request (`abortRef.current?.abort()`) before creating a new controller. This cancel-before-send pattern isn't just about preventing interleaved responses — it's also necessary for callback safety. Each `send()` call receives its own `onComplete` closure. If the user rapidly submits twice, the first `onComplete` closure captures stale context (the history state at the time of the first send). Without the cancel, both `onComplete` callbacks could fire, writing duplicate or out-of-order messages into history. Aborting the first request ensures only the second `onComplete` fires.
+
 Here are the design decisions that make this work correctly:
 
 #### AbortController in a ref, not state
@@ -327,6 +329,19 @@ When the user clicks Stop, the `AbortController.abort()` call causes the fetch t
 
 This is the correct behavior for user-initiated cancellation. The user chose to stop — they want to see what they got, not an error message.
 
+#### Response validation before SSE parsing
+
+Before handing the response body to the SSE parser, the hook checks `response.ok`:
+
+```typescript
+if (!response.ok) {
+  const text = await response.text().catch(() => '');
+  throw new Error(`Server returned HTTP ${response.status}${text ? `: ${text}` : ''}`);
+}
+```
+
+This guards against a common production failure mode: a reverse proxy (nginx, Cloudflare, a load balancer) returning a 502 or 503 HTML error page instead of an SSE stream. Without this check, the SSE parser would silently skip every line (none start with `data:`), and the user would see no error and no response — just an empty message that never finishes. The `.catch(() => '')` on `response.text()` handles the edge case where even reading the error body fails (e.g., network interruption after headers).
+
 ---
 
 ## The components (T07, T08)
@@ -390,7 +405,7 @@ export default function ChatPage() {
 }
 ```
 
-The page maintains two pieces of state: `history` (finalized messages) and `scrollSuspended` (whether auto-scroll is paused). It gets streaming state from `useStream`.
+The page maintains two pieces of state: `history` (finalized messages) and `scrollSuspended` (whether auto-scroll is paused). It gets streaming state from `useStream`. `useState` is sufficient for M1 because there's no navigation — the chat page is the only page. Phase 4 introduces a conversation sidebar, which means the history must survive route transitions. That will require either URL-driven state or a context provider; `useState` won't scale past that point.
 
 The rendering pattern for the live assistant message is worth noting:
 
@@ -409,7 +424,7 @@ Finalized messages come from `history` state. The live streaming message comes d
 
 The auto-scroll logic is inline in T10 (it'll be extracted to a `useAutoScroll` hook in T16):
 
-- During streaming, a `useEffect` scrolls to the bottom on every `tokens` change.
+- During streaming, a `useEffect` scrolls to the bottom on every `tokens` change. The scroll is wrapped in `requestAnimationFrame` to coalesce multiple updates within a single display frame — without this, 30-50 tokens/second would each trigger a synchronous layout reflow via `scrollTop` assignment, causing jank. `rAF` ensures at most one scroll per frame (~60Hz).
 - A scroll event handler checks if the user has scrolled more than 50px above the bottom. If so, auto-scroll is suspended.
 - A "↓ New content" button appears when auto-scroll is suspended during streaming. Clicking it scrolls to the bottom and resumes auto-scroll.
 - `scrollSuspended` resets to `false` when the user submits a new message, so the next response starts with auto-scroll active.
@@ -487,7 +502,7 @@ The solution: React 18 batches all state updates in the same synchronous context
 
 Both calls happen in the same synchronous execution. React batches them into one render. The user sees the streaming message replaced by the finalized message in a single frame.
 
-In React 17, this batching only worked inside React event handlers (like `onClick`). Async contexts — like the `for await` loop inside `useStream.send` — were *not* batched, and each `setState` triggered a separate render. React 18 fixed this by batching everywhere. For streaming applications, this is a significant improvement.
+In React 17, this batching only worked inside React event handlers (like `onClick`). Async contexts — like the `for await` loop inside `useStream.send` — were *not* batched, and each `setState` triggered a separate render. React 18 fixed this by batching everywhere — it's the default behavior, no opt-in required. You don't need to do anything to enable it; the pedagogical value is understanding *that* it happens and *why* it matters for streaming UI. For streaming applications, this is a significant improvement.
 
 ---
 
@@ -499,7 +514,7 @@ At the end of Phase 1, the M1 milestone is complete. Here's what works:
 - **Cancel mid-stream.** Click Stop, the fetch aborts, the partial response stays visible.
 - **Auto-scroll with manual override.** The chat scrolls to follow new tokens. Scroll up and it pauses. A "↓ New content" button brings you back.
 - **TTFT measurement.** Each response shows a time-to-first-token badge.
-- **Error handling.** If Ollama is unreachable, the UI shows a clear error message, not a generic 500.
+- **Error handling with retry.** If Ollama is unreachable, the UI shows a clear error message with a Retry button. The `useStream` hook preserves the failed message context so the user can retry without retyping. Abort (user-initiated Stop) is not treated as a retryable failure.
 - **Database persistence.** Completed conversations are saved to SQLite (though there's no UI to browse history yet).
 - **Full test coverage.** Unit tests for every module, component tests for every component, E2E tests for the four core scenarios (happy path, cancellation, auto-scroll, error).
 
