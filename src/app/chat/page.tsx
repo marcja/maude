@@ -60,7 +60,8 @@ export default function ChatPage() {
   // Auto-scroll (inline; T16 will extract to useAutoScroll hook)
   // -------------------------------------------------------------------------
 
-  const listRef = useRef<HTMLDivElement>(null);
+  // HTMLDivElement | null matches MessageList's RefObject<HTMLDivElement | null> prop type.
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll to bottom on each token during active streaming (unless suspended).
   // `tokens` drives re-execution on each new token; its value is not needed in

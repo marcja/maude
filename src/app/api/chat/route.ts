@@ -107,6 +107,83 @@ function encode(event: SSEEvent): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
+// Thinking-block streaming parser
+// ---------------------------------------------------------------------------
+
+// Parser states: 'content' emits to the visible response; 'thinking' emits
+// to the hidden reasoning trace. The state machine handles tags that straddle
+// token boundaries by buffering the potential tag suffix until the next token.
+type StreamingParserState = 'content' | 'thinking';
+
+type StreamingChunk =
+  | { kind: 'thinking_start' }
+  | { kind: 'thinking_stop' }
+  | { kind: 'thinking'; text: string }
+  | { kind: 'content'; text: string };
+
+/**
+ * Return the index in `buffer` at which a potential partial match of `tag`
+ * begins. Everything before that index is safe to emit; the suffix must be
+ * held back until the next token confirms or denies the tag.
+ *
+ * Example: buffer = "Hello <th", tag = "<think>" → returns 6 (hold "<th").
+ */
+function partialTagEnd(buffer: string, tag: string): number {
+  // Walk backwards: check if the last k characters of buffer match the first
+  // k characters of tag (1 ≤ k < tag.length). Stop at the longest match.
+  for (let k = Math.min(tag.length - 1, buffer.length); k >= 1; k--) {
+    if (buffer.endsWith(tag.slice(0, k))) {
+      return buffer.length - k;
+    }
+  }
+  return buffer.length;
+}
+
+/**
+ * Process as much of `buffer` as can be safely emitted given the current
+ * parser state. Returns emitted chunks, the new state, and any remaining
+ * buffer that must be held until the next token arrives.
+ */
+function processBuffer(
+  buffer: string,
+  state: StreamingParserState
+): { chunks: StreamingChunk[]; state: StreamingParserState; remaining: string } {
+  const OPEN_TAG = '<think>';
+  const CLOSE_TAG = '</think>';
+  const chunks: StreamingChunk[] = [];
+  let current = buffer;
+  let currentState = state;
+
+  while (current.length > 0) {
+    if (currentState === 'content') {
+      const idx = current.indexOf(OPEN_TAG);
+      if (idx === -1) {
+        // No complete open tag — hold back any partial tag suffix.
+        const safeEnd = partialTagEnd(current, OPEN_TAG);
+        if (safeEnd > 0) chunks.push({ kind: 'content', text: current.slice(0, safeEnd) });
+        return { chunks, state: currentState, remaining: current.slice(safeEnd) };
+      }
+      if (idx > 0) chunks.push({ kind: 'content', text: current.slice(0, idx) });
+      chunks.push({ kind: 'thinking_start' });
+      currentState = 'thinking';
+      current = current.slice(idx + OPEN_TAG.length);
+    } else {
+      const idx = current.indexOf(CLOSE_TAG);
+      if (idx === -1) {
+        const safeEnd = partialTagEnd(current, CLOSE_TAG);
+        if (safeEnd > 0) chunks.push({ kind: 'thinking', text: current.slice(0, safeEnd) });
+        return { chunks, state: currentState, remaining: current.slice(safeEnd) };
+      }
+      if (idx > 0) chunks.push({ kind: 'thinking', text: current.slice(0, idx) });
+      chunks.push({ kind: 'thinking_stop' });
+      currentState = 'content';
+      current = current.slice(idx + CLOSE_TAG.length);
+    }
+  }
+  return { chunks, state: currentState, remaining: '' };
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
@@ -159,17 +236,70 @@ export async function POST(request: Request): Promise<Response> {
         // Stop cancels the upstream fetch rather than just closing the SSE stream.
         const tokens = await streamCompletion(messages, systemPrompt, request.signal);
 
-        // content_block_start signals "a text block is opening" to the client.
-        // Emitted once before the first delta, not per-token.
-        controller.enqueue(encode({ type: 'content_block_start' }));
-
+        // content_block_start is emitted lazily — only when the first content
+        // chunk arrives. If the stream begins with a <think> block, we emit
+        // thinking_block_start first so the client sees the correct ordering.
+        let parserState: StreamingParserState = 'content';
+        let parserBuffer = '';
+        let contentBlockOpen = false;
+        let thinkingBlockOpen = false;
         let accumulatedContent = '';
+        let accumulatedThinking = '';
+
         for await (const token of tokens) {
-          accumulatedContent += token;
-          controller.enqueue(encode({ type: 'content_block_delta', delta: { text: token } }));
+          parserBuffer += token;
+          const result = processBuffer(parserBuffer, parserState);
+          parserState = result.state;
+          parserBuffer = result.remaining;
+
+          for (const chunk of result.chunks) {
+            if (chunk.kind === 'thinking_start') {
+              // Close any open content block before opening a thinking block.
+              if (contentBlockOpen) {
+                controller.enqueue(encode({ type: 'content_block_stop' }));
+                contentBlockOpen = false;
+              }
+              controller.enqueue(encode({ type: 'thinking_block_start' }));
+              thinkingBlockOpen = true;
+            } else if (chunk.kind === 'thinking_stop') {
+              controller.enqueue(encode({ type: 'thinking_block_stop' }));
+              thinkingBlockOpen = false;
+            } else if (chunk.kind === 'thinking') {
+              accumulatedThinking += chunk.text;
+              controller.enqueue(encode({ type: 'thinking_delta', delta: { text: chunk.text } }));
+            } else {
+              // Lazy content_block_start: open only when first content chunk arrives.
+              if (!contentBlockOpen) {
+                controller.enqueue(encode({ type: 'content_block_start' }));
+                contentBlockOpen = true;
+              }
+              accumulatedContent += chunk.text;
+              controller.enqueue(
+                encode({ type: 'content_block_delta', delta: { text: chunk.text } })
+              );
+            }
+          }
         }
 
-        controller.enqueue(encode({ type: 'content_block_stop' }));
+        // Flush any partial tag held in the buffer at end-of-stream.
+        if (parserBuffer.length > 0) {
+          if (parserState === 'content') {
+            if (!contentBlockOpen) {
+              controller.enqueue(encode({ type: 'content_block_start' }));
+              contentBlockOpen = true;
+            }
+            accumulatedContent += parserBuffer;
+            controller.enqueue(
+              encode({ type: 'content_block_delta', delta: { text: parserBuffer } })
+            );
+          } else {
+            accumulatedThinking += parserBuffer;
+            controller.enqueue(encode({ type: 'thinking_delta', delta: { text: parserBuffer } }));
+          }
+        }
+
+        if (thinkingBlockOpen) controller.enqueue(encode({ type: 'thinking_block_stop' }));
+        if (contentBlockOpen) controller.enqueue(encode({ type: 'content_block_stop' }));
 
         // Persist only on successful completion. If the signal fires mid-stream,
         // streamCompletion throws before this block is reached — no DB rows written.
@@ -178,13 +308,22 @@ export async function POST(request: Request): Promise<Response> {
           const title = firstUserContent.slice(0, 50) || 'New conversation';
           createConversation(conversationId, title, now);
         }
-        const msgBase = { conversation_id: conversationId, thinking: null, created_at: now };
-        insertMessage({ ...msgBase, id: randomUUID(), role: 'user', content: firstUserContent });
+        const msgBase = { conversation_id: conversationId, created_at: now };
+        insertMessage({
+          ...msgBase,
+          id: randomUUID(),
+          role: 'user',
+          content: firstUserContent,
+          thinking: null,
+        });
         insertMessage({
           ...msgBase,
           id: messageId,
           role: 'assistant',
           content: accumulatedContent,
+          // Store the reasoning trace separately from visible content so the
+          // DB schema mirrors Anthropic's thinking/content distinction.
+          thinking: accumulatedThinking || null,
         });
 
         // Ollama's stream:true mode doesn't surface aggregate usage in the SSE

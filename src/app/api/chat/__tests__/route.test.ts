@@ -424,3 +424,112 @@ describe('POST /api/chat — generic error code', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 8: Thinking block detection
+// ---------------------------------------------------------------------------
+
+/** Collect all thinking_delta text from an event sequence. */
+function collectThinkingText(events: SSEEvent[]): string {
+  return events
+    .filter((e): e is Extract<SSEEvent, { type: 'thinking_delta' }> => e.type === 'thinking_delta')
+    .map((e) => e.delta.text)
+    .join('');
+}
+
+/** Collect all content_block_delta text from an event sequence. */
+function collectContentText(events: SSEEvent[]): string {
+  return events
+    .filter(
+      (e): e is Extract<SSEEvent, { type: 'content_block_delta' }> =>
+        e.type === 'content_block_delta'
+    )
+    .map((e) => e.delta.text)
+    .join('');
+}
+
+describe('POST /api/chat — thinking block detection', () => {
+  it('emits no thinking events when tokens contain no <think> tags', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hello', ' world']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(events.some((e) => e.type === 'thinking_block_start')).toBe(false);
+    expect(events.some((e) => e.type === 'thinking_delta')).toBe(false);
+    expect(events.some((e) => e.type === 'thinking_block_stop')).toBe(false);
+    expect(collectContentText(events)).toBe('Hello world');
+  });
+
+  it('emits thinking_block_start → thinking_delta → thinking_block_stop for a complete <think> block', async () => {
+    // Complete open and close tags in a single token to verify the basic happy path.
+    mockStreamCompletion.mockResolvedValue(tokenGen(['<think>reason</think>answer']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const types = events.map((e) => e.type);
+    expect(types).toContain('thinking_block_start');
+    expect(types).toContain('thinking_delta');
+    expect(types).toContain('thinking_block_stop');
+    expect(collectThinkingText(events)).toBe('reason');
+    expect(collectContentText(events)).toBe('answer');
+  });
+
+  it('handles <think> split across token boundary', async () => {
+    // '<thi' must be held back until 'nk>...' arrives to complete the open tag.
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hello <thi', 'nk>reason</think>answer']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(collectContentText(events)).toBe('Hello answer');
+    expect(collectThinkingText(events)).toBe('reason');
+  });
+
+  it('handles </think> split across token boundary', async () => {
+    // '</th' must be held back until 'ink>...' arrives to complete the close tag.
+    mockStreamCompletion.mockResolvedValue(tokenGen(['<think>reason</th', 'ink>answer']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(collectThinkingText(events)).toBe('reason');
+    expect(collectContentText(events)).toBe('answer');
+  });
+
+  it('emits thinking events before content events when stream starts with <think>', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['<think>reason</think>answer']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    const thinkStart = events.findIndex((e) => e.type === 'thinking_block_start');
+    const contentStart = events.findIndex((e) => e.type === 'content_block_start');
+    // thinking block must open before content block
+    expect(thinkStart).toBeLessThan(contentStart);
+  });
+
+  it('persists thinking content separately from visible content in DB', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['<think>inner</think>outer']));
+
+    await collectEvents(await POST(makeRequest([{ role: 'user', content: 'Hi' }])));
+
+    expect(mockInsertMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ role: 'assistant', content: 'outer', thinking: 'inner' })
+    );
+  });
+
+  it('accumulates multiple thinking tokens correctly', async () => {
+    mockStreamCompletion.mockResolvedValue(
+      tokenGen(['<think>', 'step one ', 'step two', '</think>', 'done'])
+    );
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hi' }]));
+    const events = await collectEvents(response);
+
+    expect(collectThinkingText(events)).toBe('step one step two');
+    expect(collectContentText(events)).toBe('done');
+  });
+});

@@ -117,7 +117,7 @@ end-to-end slice that proves the streaming pipeline works.
 detection, thinking blocks, rich markdown rendering. The app handles failure modes
 gracefully. No new layout — same single-column chat, but battle-hardened.
 
-- [ ] T11 — BFF route: thinking block detection
+- [x] T11 — BFF route: thinking block detection
       User value: reasoning-trace models (DeepSeek-R1, QwQ) show their thinking
       Deliverable: state machine in `route.ts` for `<think>` tag parsing
       Depends: T05
