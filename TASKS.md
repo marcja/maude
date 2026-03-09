@@ -149,7 +149,7 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
       Depends: T14
       Test: renders after stall; Cancel fires abort; disappears on token arrival
 
-- [ ] T16 — useAutoScroll hook (extracted from T10)
+- [x] T16 — useAutoScroll hook (extracted from T10)
       User value: correct scroll behavior as a reusable, tested hook
       Deliverable: `src/hooks/useAutoScroll.ts`
       Test: scrolls to bottom during streaming; suspends if user scrolls >50px
