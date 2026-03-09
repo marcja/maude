@@ -46,6 +46,10 @@ const ESM_PACKAGES = [
 const baseConfig = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
+  // React 19's scheduler creates an internal MessageChannel (MESSAGEPORT) that
+  // Jest cannot clean up, causing "worker failed to exit gracefully" warnings.
+  // forceExit is the recommended workaround until the scheduler is patched.
+  forceExit: true,
   // Exclude Playwright E2E tests — they run via `pnpm playwright test`, not Jest.
   testPathIgnorePatterns: ['/node_modules/', '/.next/', '/tests/e2e/'],
   // setupFilesAfterEnv runs after the test framework is installed in the environment,
