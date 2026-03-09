@@ -23,7 +23,7 @@
  * - onNewChat is optional: T10 will supply it; future callers can omit it.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 interface InputAreaProps {
   /** Drives Stop/Send toggle and guards Enter submit against racing sends. */
@@ -42,11 +42,11 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
 
   // Auto-resize: reset to one row then grow to fit content. The max-h-32
   // CSS class caps the visual height; beyond that the textarea scrolls
-  // internally. This is the standard technique for auto-growing textareas
-  // without a contentEditable div — reset to 'auto' forces the browser to
-  // recalculate scrollHeight, then set height to the new scrollHeight.
+  // internally. useLayoutEffect (not useEffect) because this is a synchronous
+  // DOM measurement + mutation that must happen before the browser paints —
+  // useEffect would cause a visible frame with the wrong textarea height.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `value` is an intentional trigger dep — the effect must re-run on every keystroke to recalculate textarea height, even though the value itself is not read in the effect body.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';

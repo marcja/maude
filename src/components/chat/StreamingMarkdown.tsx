@@ -42,67 +42,85 @@ interface StreamingMarkdownProps {
 const REMARK_PLUGINS = [remarkGfm];
 
 // ---------------------------------------------------------------------------
+// Stable component overrides — hoisted to module scope so react-markdown does
+// not rebind on every render. During streaming this component re-renders on
+// each token (30-50/sec); an inline object would create a new reference each
+// time, forcing unnecessary reconciliation work.
+// ---------------------------------------------------------------------------
+
+const COMPONENTS = {
+  // Headings
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <h1 className="mb-2 text-xl font-bold">{children}</h1>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h2 className="mb-2 text-lg font-semibold">{children}</h2>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="mb-1 text-base font-semibold">{children}</h3>
+  ),
+  // Paragraphs: margin between paragraphs, not after the last one
+  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
+  // Code blocks and inline code
+  code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+    const isBlock = className?.startsWith('language-');
+    return isBlock ? (
+      // Block code: pre + code are rendered separately by react-markdown;
+      // className carries the language- prefix for the inner <code>.
+      <code className="block overflow-x-auto rounded bg-gray-100 px-3 py-2 font-mono text-sm">
+        {children}
+      </code>
+    ) : (
+      <code className="rounded bg-gray-100 px-1 font-mono text-sm">{children}</code>
+    );
+  },
+  pre: ({ children }: { children?: React.ReactNode }) => <pre className="mb-2">{children}</pre>,
+  // Lists
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="mb-2 list-disc pl-5">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="mb-2 list-decimal pl-5">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
+  // Tables (GFM)
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <table className="mb-2 w-full border-collapse text-sm">{children}</table>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="border border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold">
+      {children}
+    </th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="border border-gray-300 px-2 py-1">{children}</td>
+  ),
+  // Links — open in new tab; rel noopener prevents opener access
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline hover:text-blue-800"
+    >
+      {children}
+    </a>
+  ),
+  // Blockquotes
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="mb-2 border-l-4 border-gray-300 pl-3 italic text-gray-600">
+      {children}
+    </blockquote>
+  ),
+};
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function StreamingMarkdown({ content }: StreamingMarkdownProps) {
   return (
-    <ReactMarkdown
-      remarkPlugins={REMARK_PLUGINS}
-      components={{
-        // Headings
-        h1: ({ children }) => <h1 className="mb-2 text-xl font-bold">{children}</h1>,
-        h2: ({ children }) => <h2 className="mb-2 text-lg font-semibold">{children}</h2>,
-        h3: ({ children }) => <h3 className="mb-1 text-base font-semibold">{children}</h3>,
-        // Paragraphs: margin between paragraphs, not after the last one
-        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-        // Code blocks and inline code
-        code: ({ children, className }) => {
-          const isBlock = className?.startsWith('language-');
-          return isBlock ? (
-            // Block code: pre + code are rendered separately by react-markdown;
-            // className carries the language- prefix for the inner <code>.
-            <code className="block overflow-x-auto rounded bg-gray-100 px-3 py-2 font-mono text-sm">
-              {children}
-            </code>
-          ) : (
-            <code className="rounded bg-gray-100 px-1 font-mono text-sm">{children}</code>
-          );
-        },
-        pre: ({ children }) => <pre className="mb-2">{children}</pre>,
-        // Lists
-        ul: ({ children }) => <ul className="mb-2 list-disc pl-5">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-2 list-decimal pl-5">{children}</ol>,
-        li: ({ children }) => <li className="mb-0.5">{children}</li>,
-        // Tables (GFM)
-        table: ({ children }) => (
-          <table className="mb-2 w-full border-collapse text-sm">{children}</table>
-        ),
-        th: ({ children }) => (
-          <th className="border border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold">
-            {children}
-          </th>
-        ),
-        td: ({ children }) => <td className="border border-gray-300 px-2 py-1">{children}</td>,
-        // Links — open in new tab; rel noopener prevents opener access
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 underline hover:text-blue-800"
-          >
-            {children}
-          </a>
-        ),
-        // Blockquotes
-        blockquote: ({ children }) => (
-          <blockquote className="mb-2 border-l-4 border-gray-300 pl-3 italic text-gray-600">
-            {children}
-          </blockquote>
-        ),
-      }}
-    >
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
       {content}
     </ReactMarkdown>
   );

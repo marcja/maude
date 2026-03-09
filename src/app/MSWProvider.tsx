@@ -39,5 +39,6 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  return <>{children}</>;
+  // React 19: components can return children directly — no Fragment needed.
+  return children;
 }
