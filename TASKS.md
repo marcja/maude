@@ -137,7 +137,7 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
       Test: partial markdown renders without throwing; code fence snaps to
         correct render on close; upgrade from plain text in MessageItem
 
-- [ ] T14 — useStallDetection hook
+- [x] T14 — useStallDetection hook
       User value: detects when the model stops producing tokens for 8 seconds
       Deliverable: `src/hooks/useStallDetection.ts`
       Test: timer fires after 8s with no token; resets on each token arrival;
