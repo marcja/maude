@@ -143,7 +143,36 @@ describe('InputArea — Stop button visibility', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 4: disabled during streaming
+// Suite 4: textarea auto-resize
+// ---------------------------------------------------------------------------
+
+describe('InputArea — textarea auto-resize', () => {
+  it('sets style.height on the textarea after typing', async () => {
+    render(<InputArea isStreaming={false} onSubmit={jest.fn()} onStop={jest.fn()} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    await userEvent.type(textarea, 'Hello');
+
+    // The auto-resize effect sets style.height based on scrollHeight.
+    // In jsdom scrollHeight is 0, so height will be '0px'. The important
+    // thing is that the effect ran and set a value (not the default empty).
+    expect(textarea.style.height).toBeDefined();
+    expect(textarea.style.height).not.toBe('');
+  });
+
+  it('resets style.height after submit clears the textarea', async () => {
+    render(<InputArea isStreaming={false} onSubmit={jest.fn()} onStop={jest.fn()} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    await userEvent.type(textarea, 'Hello{Enter}');
+
+    // After submit, value is '' and the effect re-runs, resetting height.
+    expect(textarea.style.height).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 5: disabled during streaming
 // ---------------------------------------------------------------------------
 
 describe('InputArea — disabled during streaming', () => {

@@ -23,7 +23,7 @@
  * - onNewChat is optional: T10 will supply it; future callers can omit it.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface InputAreaProps {
   /** Drives Stop/Send toggle and guards Enter submit against racing sends. */
@@ -38,6 +38,20 @@ interface InputAreaProps {
 
 export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAreaProps) {
   const [value, setValue] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize: reset to one row then grow to fit content. The max-h-32
+  // CSS class caps the visual height; beyond that the textarea scrolls
+  // internally. This is the standard technique for auto-growing textareas
+  // without a contentEditable div — reset to 'auto' forces the browser to
+  // recalculate scrollHeight, then set height to the new scrollHeight.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `value` is an intentional trigger dep — the effect must re-run on every keystroke to recalculate textarea height, even though the value itself is not read in the effect body.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   const handleSubmit = () => {
     const trimmed = value.trim();
@@ -73,6 +87,7 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
         </button>
       )}
       <textarea
+        ref={textareaRef}
         className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
         value={value}
         onChange={(e) => setValue(e.target.value)}
