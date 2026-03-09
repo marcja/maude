@@ -53,6 +53,10 @@ function encode(event: SSEEvent): Uint8Array {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request): Promise<Response> {
+  // request.json() returns `unknown`. The `as RequestBody` cast trusts the
+  // client to send valid data — acceptable here because this is an internal
+  // BFF endpoint, not a public API. A production app would validate with Zod
+  // or a manual check before trusting the shape (see commit 4 in the review).
   const { messages, conversationId: incomingConversationId } =
     (await request.json()) as RequestBody;
 
@@ -68,6 +72,11 @@ export async function POST(request: Request): Promise<Response> {
   // First user message content: used for title generation and as the persisted user message body.
   const firstUserContent = messages.find((m) => m.role === 'user')?.content ?? '';
 
+  // Push-based stream (start callback) rather than pull-based (pull callback):
+  // the BFF re-emits tokens as fast as they arrive from the model adapter, so
+  // there is no benefit to demand-driven pulling. A pull-based approach would
+  // be appropriate if the producer were faster than the consumer and you wanted
+  // to avoid buffering — not the case here since token rate is model-limited.
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       // Always emit message_start first so the client can display the prompt
@@ -138,6 +147,11 @@ export async function POST(request: Request): Promise<Response> {
     },
   });
 
+  // SSE responses always return 200. The HTTP status is committed before the
+  // first token arrives, so server-side errors (model unreachable, bad response)
+  // cannot change it retroactively. Errors are instead communicated as typed
+  // SSE events within the stream body — the client's useStream hook handles
+  // them via the 'error' case in its event switch.
   return new Response(stream, {
     status: 200,
     headers: {
