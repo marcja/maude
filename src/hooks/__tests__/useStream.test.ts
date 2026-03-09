@@ -21,10 +21,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import type { SSEEvent } from '../../lib/client/events';
 import { holdHandler } from '../../mocks/handlers/hold';
 import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
 import { thinkingHandler } from '../../mocks/handlers/thinking';
+import { encodeEvent } from '../../mocks/utils';
 import type { OnStreamComplete } from '../useStream';
 import { useStream } from '../useStream';
 
@@ -161,6 +163,7 @@ describe('useStream — onComplete callback', () => {
     });
 
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    // jest.fn() types mock.calls as any[][] — cast to the known callback shape
     const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
     expect(callArg.tokens).toBe('Hello world');
     expect(typeof callArg.ttft).toBe('number');
@@ -183,6 +186,7 @@ describe('useStream — onComplete callback', () => {
 
     // Abort is treated as completion (not error) — onComplete fires with whatever arrived.
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    // jest.fn() types mock.calls as any[][] — cast to the known callback shape
     const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
     expect(typeof callArg.tokens).toBe('string');
   });
@@ -284,6 +288,27 @@ describe('useStream — non-2xx response', () => {
       void result.current.send([{ role: 'user', content: 'Hi' }], null, onComplete);
     });
 
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7b: onComplete not called on errors
+// ---------------------------------------------------------------------------
+
+describe('useStream — onComplete skipped on error', () => {
+  it('does not call onComplete on SSE error event', async () => {
+    server.use(midstreamErrorHandler);
+
+    const { result } = renderHook(() => useStream());
+    const onComplete = jest.fn();
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }], null, onComplete);
+    });
+
+    // SSE error events are failures, not completions — onComplete must not fire.
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(onComplete).not.toHaveBeenCalled();
   });
@@ -411,9 +436,14 @@ describe('useStream — thinking events', () => {
 
     await waitFor(() => expect(result.current.isStreaming).toBe(false));
     expect(result.current.thinkingText).toBe('Step 1: analyze.\nStep 2: compute.\n');
+    // Thinking text must NOT leak into the content tokens accumulator
+    expect(result.current.tokens).toBe('The answer is 42.');
   });
 
-  it('sets isThinking true during thinking block, false after stop', async () => {
+  it('isThinking is false after stream completes with thinking block', async () => {
+    // Note: the synchronous handler completes in a single microtask, so we can
+    // only observe the final state. The intermediate isThinking=true state is
+    // not observable without a delayed handler — accepted trade-off.
     server.use(thinkingHandler);
 
     const { result } = renderHook(() => useStream());
@@ -422,7 +452,6 @@ describe('useStream — thinking events', () => {
       void result.current.send([{ role: 'user', content: 'Think' }]);
     });
 
-    // After stream completes, isThinking should be false
     await waitFor(() => expect(result.current.isStreaming).toBe(false));
     expect(result.current.isThinking).toBe(false);
   });
@@ -469,6 +498,7 @@ describe('useStream — thinking events', () => {
     });
 
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    // jest.fn() types mock.calls as any[][] — cast to the known callback shape
     const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
     expect(callArg.thinkingText).toBe('Step 1: analyze.\nStep 2: compute.\n');
     expect(typeof callArg.thinkingDurationMs).toBe('number');
@@ -497,5 +527,121 @@ describe('useStream — lastTokenAt', () => {
   it('lastTokenAt is null before first content delta', () => {
     const { result } = renderHook(() => useStream());
     expect(result.current.lastTokenAt).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 12: conversationId passthrough
+// ---------------------------------------------------------------------------
+
+describe('useStream — conversationId', () => {
+  // Helper: MSW handler that captures the request body and returns a minimal
+  // complete SSE stream, so tests can inspect what the hook serialized.
+  function useBodyCapturingHandler() {
+    let capturedBody: Record<string, unknown> | null = null;
+    const encoder = new TextEncoder();
+    server.use(
+      http.post('/api/chat', async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        const events: SSEEvent[] = [
+          { type: 'message_start', message_id: 'capture-test' },
+          { type: 'message_stop', usage: { input_tokens: 1, output_tokens: 1 } },
+        ];
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const event of events) {
+              controller.enqueue(encoder.encode(encodeEvent(event)));
+            }
+            controller.close();
+          },
+        });
+        return new HttpResponse(stream, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      })
+    );
+    return () => capturedBody;
+  }
+
+  it('sends conversationId in the request body when provided', async () => {
+    const getCapturedBody = useBodyCapturingHandler();
+
+    const { result } = renderHook(() => useStream());
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }], 'conv-123');
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(getCapturedBody()).not.toBeNull();
+    expect(getCapturedBody()?.conversationId).toBe('conv-123');
+  });
+
+  it('sends null conversationId when omitted', async () => {
+    const getCapturedBody = useBodyCapturingHandler();
+
+    const { result } = renderHook(() => useStream());
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(getCapturedBody()).not.toBeNull();
+    // When conversationId is omitted, the hook serializes it as null
+    expect(getCapturedBody()?.conversationId).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 13: state reset between sends
+// ---------------------------------------------------------------------------
+
+describe('useStream — state reset between sends', () => {
+  it('resets tokens, ttft, and thinking state on subsequent send()', async () => {
+    server.use(normalHandler);
+    const { result } = renderHook(() => useStream());
+
+    // First send — accumulates tokens
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'first' }]);
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.tokens).toBe('Hello world');
+    expect(result.current.ttft).not.toBeNull();
+
+    // Second send — tokens should reset to fresh accumulation, not append
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'second' }]);
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.tokens).toBe('Hello world');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('resets error state when a new send() starts', async () => {
+    // First: trigger an error
+    server.use(http.post('/api/chat', () => HttpResponse.error()));
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'fail' }]);
+    });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    // Second: error should clear immediately when send() starts, before response arrives
+    server.use(holdHandler);
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'retry' }]);
+    });
+
+    // While streaming, error should already be cleared
+    await waitFor(() => expect(result.current.isStreaming).toBe(true));
+    expect(result.current.error).toBeNull();
+    expect(result.current.tokens).toBe('');
+
+    // Clean up: stop the held stream
+    act(() => {
+      result.current.stop();
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
   });
 });

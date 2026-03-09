@@ -172,4 +172,67 @@ describe('useStallDetection — fires once', () => {
     });
     expect(onStall).toHaveBeenCalledTimes(1);
   });
+
+  it('re-arms the timer if a new token arrives after a stall', () => {
+    const onStall = jest.fn();
+    const { rerender } = renderHook(
+      ({ lastTokenAt }: { lastTokenAt: number | null }) =>
+        useStallDetection({ isStreaming: true, lastTokenAt, onStall }),
+      { initialProps: { lastTokenAt: null as number | null } }
+    );
+
+    // Fire the initial stall
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+    expect(onStall).toHaveBeenCalledTimes(1);
+
+    // A token arrives after the stall — should re-arm the 8s timer
+    act(() => {
+      rerender({ lastTokenAt: 8000 });
+    });
+
+    // Another 8s with no token — should fire stall again
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+    expect(onStall).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 5: callback identity — ref indirection protects against stale closures
+// ---------------------------------------------------------------------------
+
+describe('useStallDetection — callback identity', () => {
+  it('uses the latest onStall callback without resetting the timer', () => {
+    // The hook stores onStall in a ref so that swapping the callback mid-stream
+    // does not restart the setTimeout. This test guards that ref indirection.
+    const onStall1 = jest.fn();
+    const onStall2 = jest.fn();
+
+    const { rerender } = renderHook(
+      ({ onStall }: { onStall: () => void }) =>
+        useStallDetection({ isStreaming: true, lastTokenAt: null, onStall }),
+      { initialProps: { onStall: onStall1 } }
+    );
+
+    // Advance 5s into the stall window
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    // Swap the callback mid-stream (simulates parent re-render with new closure)
+    act(() => {
+      rerender({ onStall: onStall2 });
+    });
+
+    // Advance the remaining 3s — should fire onStall2, NOT onStall1
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+
+    expect(onStall1).not.toHaveBeenCalled();
+    expect(onStall2).toHaveBeenCalledTimes(1);
+  });
 });

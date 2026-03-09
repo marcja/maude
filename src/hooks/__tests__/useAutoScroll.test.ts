@@ -22,7 +22,8 @@ import { useAutoScroll } from '../useAutoScroll';
 // Mock helpers
 // ---------------------------------------------------------------------------
 
-/** Create a mock HTMLDivElement ref with controllable scroll measurements. */
+/** Create a mock HTMLDivElement ref with controllable scroll measurements.
+ *  Defaults: scrollHeight=1000, scrollTop=950, clientHeight=50 → gap=0 (at bottom). */
 function createMockRef(
   scrollHeight = 1000,
   scrollTop = 950,
@@ -100,6 +101,19 @@ describe('useAutoScroll — auto-scroll during streaming', () => {
 
     // scrollTop should remain at initial value
     expect(getScrollTop(ref)).toBe(0);
+  });
+
+  it('does not throw when ref is null during streaming', () => {
+    const ref: RefObject<HTMLDivElement | null> = { current: null };
+
+    // Should not throw — the rAF callback's null guard skips the scroll
+    expect(() => {
+      renderHook(
+        ({ tokens }: { tokens: string }) =>
+          useAutoScroll({ listRef: ref, isStreaming: true, tokens }),
+        { initialProps: { tokens: 'a' } }
+      );
+    }).not.toThrow();
   });
 
   it('does not scroll when scroll is suspended', () => {
@@ -190,6 +204,22 @@ describe('useAutoScroll — scroll suspension', () => {
     });
     expect(result.current.scrollSuspended).toBe(false);
   });
+
+  it('does not suspend at exactly 50px (boundary: > not >=)', () => {
+    // gap = scrollHeight - scrollTop - clientHeight = 2000 - 1450 - 500 = 50
+    // SPEC §4.2: "more than 50px" => strict >, so exactly 50 should NOT suspend
+    const ref = createMockRef(2000, 0, 500);
+    const { result } = renderHook(() =>
+      useAutoScroll({ listRef: ref, isStreaming: true, tokens: '' })
+    );
+
+    setScrollTop(ref, 1450);
+    act(() => {
+      result.current.handleScroll();
+    });
+
+    expect(result.current.scrollSuspended).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -216,6 +246,19 @@ describe('useAutoScroll — scrollToBottom', () => {
 
     expect(result.current.scrollSuspended).toBe(false);
     expect(getScrollTop(ref)).toBe(2000);
+  });
+
+  it('handles null ref gracefully', () => {
+    const ref: RefObject<HTMLDivElement | null> = { current: null };
+    const { result } = renderHook(() =>
+      useAutoScroll({ listRef: ref, isStreaming: true, tokens: '' })
+    );
+
+    // Should not throw — null guard in scrollToBottom skips the scroll
+    act(() => {
+      result.current.scrollToBottom();
+    });
+    expect(result.current.scrollSuspended).toBe(false);
   });
 });
 
@@ -247,6 +290,38 @@ describe('useAutoScroll — resetSuspension', () => {
     expect(result.current.scrollSuspended).toBe(false);
     // scrollTop unchanged — resetSuspension does not scroll
     expect(getScrollTop(ref)).toBe(1400);
+  });
+
+  it('allows auto-scroll to resume on next token when streaming', () => {
+    // Production scenario: user submits a new message while suspended —
+    // resetSuspension clears the flag so the next token triggers auto-scroll.
+    const ref = createMockRef(2000, 0, 500);
+    const { result, rerender } = renderHook(
+      ({ tokens }: { tokens: string }) =>
+        useAutoScroll({ listRef: ref, isStreaming: true, tokens }),
+      { initialProps: { tokens: 'a' } }
+    );
+
+    // Suspend
+    setScrollTop(ref, 1400);
+    act(() => {
+      result.current.handleScroll();
+    });
+    expect(result.current.scrollSuspended).toBe(true);
+
+    // Reset (simulates new message submit)
+    act(() => {
+      result.current.resetSuspension();
+    });
+
+    // Reset scrollTop to track whether auto-scroll fires
+    setScrollTop(ref, 0);
+    act(() => {
+      rerender({ tokens: 'ab' });
+    });
+
+    // Auto-scroll should have fired since suspension was cleared
+    expect(getScrollTop(ref)).toBe(2000);
   });
 });
 

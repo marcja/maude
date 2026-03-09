@@ -14,6 +14,17 @@ describe('encodeEvent', () => {
     const event: SSEEvent = { type: 'content_block_start' };
     expect(encodeEvent(event)).toBe(`data: ${JSON.stringify(event)}\n\n`);
   });
+
+  it.each<{ label: string; event: SSEEvent }>([
+    { label: 'content_block_delta', event: { type: 'content_block_delta', delta: { text: 'hi' } } },
+    { label: 'error', event: { type: 'error', error: { message: 'fail', code: 'bad' } } },
+    {
+      label: 'message_stop',
+      event: { type: 'message_stop', usage: { input_tokens: 1, output_tokens: 2 } },
+    },
+  ])('serialises $label with nested fields', ({ event }) => {
+    expect(encodeEvent(event)).toBe(`data: ${JSON.stringify(event)}\n\n`);
+  });
 });
 
 describe('delay', () => {
@@ -32,6 +43,14 @@ describe('delay', () => {
     const promise = delay(10_000, controller.signal);
     // Abort fires before the 10s timer — delay should resolve immediately.
     controller.abort();
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('resolves immediately when the signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    // Signal is already aborted before delay() is called — must not wait.
+    const promise = delay(10_000, controller.signal);
     await expect(promise).resolves.toBeUndefined();
   });
 });

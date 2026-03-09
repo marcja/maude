@@ -23,6 +23,8 @@ export function encodeEvent(event: SSEEvent): string {
  * Used by MSW handlers that need real inter-token timing (slow, stall).
  */
 export function delay(ms: number, signal: AbortSignal): Promise<void> {
+  // Resolve immediately if already aborted — the abort event won't fire again.
+  if (signal.aborted) return Promise.resolve();
   return new Promise<void>((resolve) => {
     const timer = setTimeout(resolve, ms);
     signal.addEventListener(

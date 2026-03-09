@@ -18,6 +18,8 @@ export const midstreamErrorPartialHandler = http.post('/api/chat', () => {
   const events: SSEEvent[] = [
     { type: 'message_start', message_id: 'error-partial-test' },
     { type: 'content_block_start' },
+    // `as const` preserves the string literal for SSEEvent's discriminated union —
+    // Array.from() widens the type to string otherwise.
     ...Array.from({ length: 10 }, (_, i) => ({
       type: 'content_block_delta' as const,
       delta: { text: `word${i} ` },

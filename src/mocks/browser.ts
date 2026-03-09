@@ -16,6 +16,7 @@
  */
 
 import { setupWorker } from 'msw/browser';
+import { holdHandler } from './handlers/hold';
 import { markdownHandler } from './handlers/markdown';
 import { midstreamErrorHandler } from './handlers/midstream-error';
 import { midstreamErrorPartialHandler } from './handlers/midstream-error-partial';
@@ -36,6 +37,7 @@ const HANDLERS = {
   stall: stallHandler,
   thinking: thinkingHandler,
   markdown: markdownHandler,
+  hold: holdHandler,
 } as const;
 
 export type HandlerKey = keyof typeof HANDLERS;

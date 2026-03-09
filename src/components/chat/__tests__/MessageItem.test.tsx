@@ -65,6 +65,12 @@ describe('MessageItem — assistant message TTFT badge', () => {
     render(<MessageItem sender="assistant" content="Hello" />);
     expect(screen.queryByText(/↯/)).not.toBeInTheDocument();
   });
+
+  it('renders the TTFT badge when ttft is 0 (falsy but valid)', () => {
+    // 0 is falsy in JS but a valid TTFT — the != null guard must not swallow it
+    render(<MessageItem sender="assistant" content="Hello" ttft={0} />);
+    expect(screen.getByText('↯ 0ms')).toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -72,10 +78,21 @@ describe('MessageItem — assistant message TTFT badge', () => {
 // ---------------------------------------------------------------------------
 
 describe('MessageItem — copy button', () => {
+  // Capture the original clipboard so we can restore it after each test,
+  // preventing the mock from leaking to other test files in the same worker.
+  const originalClipboard = navigator.clipboard;
+
   beforeEach(() => {
     // jsdom does not implement clipboard API; provide a mock
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: jest.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: originalClipboard,
       configurable: true,
     });
   });
@@ -89,6 +106,20 @@ describe('MessageItem — copy button', () => {
     render(<MessageItem sender="assistant" content="Copy this text" />);
     await userEvent.click(screen.getByRole('button', { name: /copy/i }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Copy this text');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 3b: empty assistant content
+// ---------------------------------------------------------------------------
+
+describe('MessageItem — empty assistant content', () => {
+  it('renders the footer (copy button) even when content is empty', () => {
+    // Edge case: stream just started, no tokens arrived yet, and isStreaming
+    // has already flipped to false (e.g. immediate error). The bubble and
+    // footer should still render without crashing.
+    render(<MessageItem sender="assistant" content="" />);
+    expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument();
   });
 });
 

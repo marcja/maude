@@ -46,6 +46,20 @@ describe('InputArea — submit on Enter', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('does not call onSubmit when textarea contains only whitespace', async () => {
+    const onSubmit = jest.fn();
+    render(<InputArea isStreaming={false} onSubmit={onSubmit} onStop={jest.fn()} />);
+
+    // Whitespace-only input is a distinct edge case from empty input — the
+    // trim guard in handleSubmit must catch it, not just the empty-string check.
+    const textarea = screen.getByRole('textbox');
+    await userEvent.click(textarea);
+    await userEvent.paste('   ');
+    await userEvent.keyboard('{Enter}');
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('calls onSubmit with trimmed value (ignores leading/trailing whitespace)', async () => {
     const onSubmit = jest.fn();
     render(<InputArea isStreaming={false} onSubmit={onSubmit} onStop={jest.fn()} />);
@@ -149,19 +163,21 @@ describe('InputArea — Stop button visibility', () => {
 describe('InputArea — textarea auto-resize', () => {
   it('sets style.height on the textarea after typing', async () => {
     render(<InputArea isStreaming={false} onSubmit={jest.fn()} onStop={jest.fn()} />);
+    // getByRole returns HTMLElement; style.height requires HTMLTextAreaElement
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    // Stub scrollHeight so we can verify the effect reads it correctly.
+    // jsdom's default scrollHeight is 0, which makes the assertion meaningless.
+    Object.defineProperty(textarea, 'scrollHeight', { value: 80, configurable: true });
 
     await userEvent.type(textarea, 'Hello');
 
-    // The auto-resize effect sets style.height based on scrollHeight.
-    // In jsdom scrollHeight is 0, so height will be '0px'. The important
-    // thing is that the effect ran and set a value (not the default empty).
-    expect(textarea.style.height).toBeDefined();
-    expect(textarea.style.height).not.toBe('');
+    expect(textarea.style.height).toBe('80px');
   });
 
   it('resets style.height after submit clears the textarea', async () => {
     render(<InputArea isStreaming={false} onSubmit={jest.fn()} onStop={jest.fn()} />);
+    // getByRole returns HTMLElement; style.height requires HTMLTextAreaElement
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
 
     await userEvent.type(textarea, 'Hello{Enter}');
@@ -194,5 +210,46 @@ describe('InputArea — disabled during streaming', () => {
     await userEvent.type(screen.getByRole('textbox'), 'Hello{Enter}');
 
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 6: New chat button
+// ---------------------------------------------------------------------------
+
+describe('InputArea — New chat button', () => {
+  it('does not render the New chat button when onNewChat is omitted', () => {
+    render(<InputArea isStreaming={false} onSubmit={jest.fn()} onStop={jest.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /new chat/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the New chat button when onNewChat is provided', () => {
+    render(
+      <InputArea
+        isStreaming={false}
+        onSubmit={jest.fn()}
+        onStop={jest.fn()}
+        onNewChat={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /new chat/i })).toBeInTheDocument();
+  });
+
+  it('calls onNewChat when the New chat button is clicked', async () => {
+    const onNewChat = jest.fn();
+    render(
+      <InputArea
+        isStreaming={false}
+        onSubmit={jest.fn()}
+        onStop={jest.fn()}
+        onNewChat={onNewChat}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /new chat/i }));
+
+    expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 });
