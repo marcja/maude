@@ -46,6 +46,8 @@ const ESM_PACKAGES = [
 const baseConfig = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
+  // Exclude Playwright E2E tests — they run via `pnpm playwright test`, not Jest.
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/tests/e2e/'],
   // setupFilesAfterEnv runs after the test framework is installed in the environment,
   // so expect.extend() calls in @testing-library/jest-dom can find the global expect.
   // (setupFiles runs before the framework; @testing-library/jest-dom needs expect to exist.)

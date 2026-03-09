@@ -29,7 +29,9 @@
       "data",
       "playwright-report",
       "test-results",
-      ".pnpm-store"
+      ".pnpm-store",
+      "public/mockServiceWorker.js",
+      "next-env.d.ts"
     ]
   }
 }
