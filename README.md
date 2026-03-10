@@ -30,7 +30,9 @@
 │   MessageItem,                                          │
 │   ThinkingBlock,     useStallDetection  useAutoScroll   │
 │   StreamingMarkdown,  (8s timeout)       (scroll mgmt)  │
-│   StallIndicator)                                       │
+│   StallIndicator,                                       │
+│   ObservabilityPane) ObservabilityContext                │
+│                       (event bus for debug pane)         │
 └────────────────────────────┬────────────────────────────┘
                              │ POST /api/chat (SSE)
 ┌────────────────────────────▼────────────────────────────┐
@@ -55,7 +57,7 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
-A strict client/server boundary is enforced: no client component may import from `src/lib/server/`. Code is organized under `src/` into `app/` (routes and pages), `components/`, `hooks/`, `lib/client/`, `lib/server/`, and `mocks/`.
+A strict client/server boundary is enforced: no client component may import from `src/lib/server/`. Code is organized under `src/` into `app/` (routes and pages), `components/` (`chat/` and `layout/`), `context/`, `hooks/`, `lib/client/`, `lib/server/`, and `mocks/`.
 
 ## Approach
 
@@ -66,6 +68,8 @@ A strict client/server boundary is enforced: no client component may import from
 **React 19 concurrent features.** `startTransition` wraps token accumulation so user interactions (e.g. Stop button) are never blocked by rendering. Every concurrent-feature usage has a comment explaining *why* it's needed at that specific call site.
 
 **Single-file model adapter.** `modelAdapter.ts` is the only file that reads `OLLAMA_BASE_URL` or `MODEL_NAME`. Swapping LLM backends means editing one file.
+
+**Observability built in.** An `ObservabilityContext` event bus feeds a collapsible debug pane showing live metrics (TTFT, throughput), a timestamped event log, and the system prompt used for each request. The pane sits alongside the chat in a two-column layout.
 
 **Test-driven, Ollama-free.** MSW intercepts `/api/chat` at both layers: Jest unit tests mock at the module level; Playwright E2E tests activate MSW handlers in the browser via string keys. No running model is required to develop or test.
 
@@ -111,7 +115,7 @@ pnpm lint:fix
 | M0 | Dev environment setup | Done |
 | M1 | Minimal viable chat — streaming, cancellation, auto-scroll | Done |
 | M2 | Streaming polish — thinking blocks, markdown, stall detection | Done |
-| M3 | Observability — debug pane with metrics, events, system prompt | Planned |
-| M4 | Full app — history, settings, welcome page, conversation API | Planned |
+| M3 | Observability — debug pane with metrics, events, system prompt | Done |
+| M4 | Full app — history, settings, welcome page, conversation API | In progress |
 
 See [TASKS.md](TASKS.md) for the detailed build plan and [SPEC.md](SPEC.md) for the full specification.
