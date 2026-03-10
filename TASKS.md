@@ -187,7 +187,7 @@ and system prompt tab make the streaming infrastructure teachable and inspectabl
       Test: TTFT emitted on first token; stream_completed emitted on message_stop;
         stream_cancelled emitted on abort; stream_error emitted on error event
 
-- [ ] T20 — ObservabilityPane component
+- [x] T20 — ObservabilityPane component
       User value: debug pane with Metrics cards, Events log, System Prompt tab
       Deliverable: `src/components/layout/ObservabilityPane.tsx`
       Depends: T18
