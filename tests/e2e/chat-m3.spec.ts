@@ -103,8 +103,8 @@ test('pane collapses and expands; center fills width when collapsed', async ({ p
     centerSelector
   );
 
-  // Collapse the pane via its internal collapse button.
-  await page.getByRole('button', { name: 'Collapse debug pane' }).click();
+  // Collapse the pane via the gear toggle in the chat header.
+  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
 
   // Collapsed strip shows vertical "Debug" text.
   await expect(page.getByText('Debug')).toBeVisible({ timeout: 2000 });

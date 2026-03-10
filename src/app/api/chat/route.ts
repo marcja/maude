@@ -305,13 +305,13 @@ export async function POST(request: Request): Promise<Response> {
       try {
         // Propagate the HTTP request's abort signal to Ollama so that clicking
         // Stop cancels the upstream fetch rather than just closing the SSE stream.
-        const tokens = await streamCompletion(messages, systemPrompt, request.signal);
+        const streamResult = await streamCompletion(messages, systemPrompt, request.signal);
 
         const dispatcher = new ChunkDispatcher(controller);
         let parserState: StreamingParserState = 'content';
         let parserBuffer = '';
 
-        for await (const token of tokens) {
+        for await (const token of streamResult.tokens) {
           parserBuffer += token;
           const result = processBuffer(parserBuffer, parserState);
           parserState = result.state;
@@ -351,11 +351,17 @@ export async function POST(request: Request): Promise<Response> {
           thinking: accumulatedThinking || null,
         });
 
-        // Ollama's stream:true mode doesn't surface aggregate usage in the SSE
-        // body; placeholder zeros here. A future task can fill real counts
-        // if the model returns them in a final chunk.
+        // Usage comes from Ollama's final streaming chunk (stream_options.include_usage).
+        // Falls back to zeros if the model doesn't support usage reporting.
+        const usage = streamResult.getUsage();
         controller.enqueue(
-          encode({ type: 'message_stop', usage: { input_tokens: 0, output_tokens: 0 } })
+          encode({
+            type: 'message_stop',
+            usage: {
+              input_tokens: usage?.promptTokens ?? 0,
+              output_tokens: usage?.completionTokens ?? 0,
+            },
+          })
         );
       } catch (err) {
         // Abort is client-initiated; the client already knows it stopped, so

@@ -89,7 +89,7 @@ function formatTime(ts: number): string {
 /** Format a numeric metric value with a unit, or "—" if null. */
 function formatMetric(value: number | null, unit: string): string {
   if (value === null) return '—';
-  return `${value} ${unit}`;
+  return `${Math.round(value)} ${unit}`;
 }
 
 /** Format duration in ms as seconds with one decimal, or "—" if null. */
@@ -174,44 +174,40 @@ function EventRow({ event }: { event: ObservabilityEvent }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ObservabilityPane() {
+interface ObservabilityPaneProps {
+  /** Whether the pane is collapsed to a 32px strip. Controlled by the parent. */
+  collapsed: boolean;
+  /** Toggle between collapsed and expanded states. */
+  onToggle: () => void;
+}
+
+export function ObservabilityPane({ collapsed, onToggle }: ObservabilityPaneProps) {
   const { state } = useObservability();
-  const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('metrics');
 
   // -- Collapsed strip: 32px wide with vertical "Debug" label ----------------
+  // Entire strip is clickable for discoverability — clicking anywhere expands.
   if (collapsed) {
     return (
-      <div className="flex h-full w-8 flex-col items-center border-l border-gray-200 bg-gray-50">
-        <button
-          type="button"
-          aria-label="Expand debug pane"
-          className="mt-2 p-1 text-gray-400 hover:text-gray-600"
-          onClick={() => setCollapsed(false)}
-        >
-          ◂
-        </button>
+      <button
+        type="button"
+        className="flex h-full w-8 cursor-pointer flex-col items-center border-l border-gray-200 bg-gray-50"
+        onClick={onToggle}
+        aria-label="Expand debug pane"
+      >
         <span className="mt-4 text-xs text-gray-500" style={{ writingMode: 'vertical-rl' }}>
           Debug
         </span>
-      </div>
+      </button>
     );
   }
 
   // -- Expanded pane: 300px fixed width --------------------------------------
   return (
     <div className="flex h-full w-[300px] flex-col border-l border-gray-200 bg-white">
-      {/* Header with collapse button */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-1.5">
+      {/* Header — no internal collapse button; gear in chat header controls toggle */}
+      <div className="flex items-center border-b border-gray-200 px-3 py-1.5">
         <span className="text-xs font-semibold text-gray-700">Debug</span>
-        <button
-          type="button"
-          aria-label="Collapse debug pane"
-          className="p-1 text-gray-400 hover:text-gray-600"
-          onClick={() => setCollapsed(true)}
-        >
-          ▸
-        </button>
       </div>
 
       {/* Tab bar */}

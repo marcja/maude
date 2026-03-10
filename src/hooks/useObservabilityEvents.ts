@@ -108,7 +108,15 @@ export function useObservabilityEvents() {
         finalizedRef.current = true;
         const durationMs = performance.now() - startTimeRef.current;
         const durationSec = (durationMs / 1000).toFixed(1);
-        const outputTokens = event.usage.output_tokens;
+
+        // Server may return 0 when the model doesn't support usage reporting.
+        // Fall back to client-side delta count for output tokens; input tokens
+        // have no client-side equivalent, so show null (renders as "—").
+        const serverOutput = event.usage.output_tokens;
+        const outputTokens = serverOutput > 0 ? serverOutput : tokenCountRef.current;
+        const serverInput = event.usage.input_tokens;
+        const inputTokens = serverInput > 0 ? serverInput : null;
+
         const throughput = durationMs > 0 ? (outputTokens / durationMs) * 1000 : 0;
 
         addEvent({
@@ -121,7 +129,7 @@ export function useObservabilityEvents() {
           updateRequest(reqId, {
             status: 'completed',
             throughput,
-            inputTokens: event.usage.input_tokens,
+            inputTokens,
             outputTokens,
             durationMs,
           });

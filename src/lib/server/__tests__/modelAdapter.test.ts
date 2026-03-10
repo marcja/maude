@@ -6,7 +6,7 @@
  */
 
 import { ModelAdapterError, streamCompletion } from '../modelAdapter';
-import type { ChatMessage } from '../modelAdapter';
+import type { ChatMessage, StreamResult } from '../modelAdapter';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -35,10 +35,10 @@ function mockStreamResponse(chunks: Uint8Array[], status = 200): Response {
   return new Response(stream, { status, headers: { 'Content-Type': 'text/event-stream' } });
 }
 
-/** Consume an AsyncIterable and return all yielded values. */
-async function collect(iter: AsyncIterable<string>): Promise<string[]> {
+/** Consume a StreamResult's tokens and return all yielded values. */
+async function collect(result: StreamResult): Promise<string[]> {
   const tokens: string[] = [];
-  for await (const t of iter) tokens.push(t);
+  for await (const t of result.tokens) tokens.push(t);
   return tokens;
 }
 
@@ -65,8 +65,12 @@ describe('streamCompletion — request shape', () => {
     const mockFetch = jest.fn().mockResolvedValue(mockStreamResponse([sseChunk('data: [DONE]')]));
     jest.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    await collect(iter); // consume so fetch is fully used
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    await collect(result); // consume so fetch is fully used
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -78,10 +82,13 @@ describe('streamCompletion — request shape', () => {
     const body = JSON.parse(init.body as string) as {
       model: string;
       stream: boolean;
+      stream_options: { include_usage: boolean };
       think: string | boolean;
       messages: { role: string; content: string }[];
     };
     expect(body.stream).toBe(true);
+    // Requests usage data in the final streaming chunk.
+    expect(body.stream_options).toEqual({ include_usage: true });
     // Default THINK_LEVEL is "medium" (matches default model gpt-oss:20b).
     // gpt-oss ignores boolean true/false and requires a level string.
     expect(body.think).toBe('medium');
@@ -104,8 +111,12 @@ describe('streamCompletion — token streaming', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['Hello', ' world']);
   });
@@ -119,8 +130,12 @@ describe('streamCompletion — token streaming', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['hi']);
   });
@@ -136,8 +151,12 @@ describe('streamCompletion — partial/multi-line chunks', () => {
     const chunk2 = sseChunk('data: {"choices":[{"delta":{"content":"bar"}}]}', 'data: [DONE]');
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk1, chunk2]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['foo', 'bar']);
   });
@@ -153,8 +172,8 @@ describe('streamCompletion — signal propagation', () => {
     const mockFetch = jest.fn().mockResolvedValue(mockStreamResponse([sseChunk('data: [DONE]')]));
     jest.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, controller.signal);
-    await collect(iter);
+    const result = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, controller.signal);
+    await collect(result);
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.signal).toBe(controller.signal);
@@ -231,8 +250,12 @@ describe('streamCompletion — malformed JSON in token stream', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['before', 'after']);
   });
@@ -253,8 +276,12 @@ describe('streamCompletion — reasoning support', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>', 'I think...', '</think>']);
   });
@@ -267,8 +294,12 @@ describe('streamCompletion — reasoning support', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>', 'fallback', '</think>']);
   });
@@ -281,8 +312,12 @@ describe('streamCompletion — reasoning support', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>', 'reasoning', '</think>', 'visible']);
   });
@@ -295,8 +330,12 @@ describe('streamCompletion — reasoning support', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>hello</think>world']);
   });
@@ -310,8 +349,12 @@ describe('streamCompletion — reasoning support', () => {
     );
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>', 'R', '</think>', 'C']);
   });
@@ -323,8 +366,12 @@ describe('streamCompletion — reasoning support', () => {
     const chunk2 = sseChunk('data: [DONE]');
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk1, chunk2]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>', 'partial', '</think>']);
   });
@@ -335,9 +382,71 @@ describe('streamCompletion — reasoning support', () => {
     const chunk = sseChunk('data: {"choices":[{"delta":{"reasoning":"abrupt"}}]}');
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
-    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
-    const tokens = await collect(iter);
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    const tokens = await collect(result);
 
     expect(tokens).toEqual(['<think>', 'abrupt', '</think>']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 9: Usage reporting from final streaming chunk
+// ---------------------------------------------------------------------------
+
+describe('streamCompletion — usage reporting', () => {
+  it('captures usage from the final chunk with stream_options.include_usage', async () => {
+    // Ollama sends a final chunk with usage data when stream_options.include_usage is true.
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"content":"hi"}}]}',
+      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    await collect(result);
+
+    expect(result.getUsage()).toEqual({ promptTokens: 10, completionTokens: 20 });
+  });
+
+  it('returns null usage when no usage chunk is present', async () => {
+    const chunk = sseChunk('data: {"choices":[{"delta":{"content":"hi"}}]}', 'data: [DONE]');
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    await collect(result);
+
+    expect(result.getUsage()).toBeNull();
+  });
+
+  it('returns null usage before tokens are consumed', async () => {
+    const chunk = sseChunk(
+      'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":10,"total_tokens":15}}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const result = await streamCompletion(
+      USER_MESSAGES,
+      SYSTEM_PROMPT,
+      new AbortController().signal
+    );
+    // Usage not yet available before consuming
+    expect(result.getUsage()).toBeNull();
+
+    await collect(result);
+    expect(result.getUsage()).toEqual({ promptTokens: 5, completionTokens: 10 });
   });
 });

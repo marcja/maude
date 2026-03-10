@@ -26,6 +26,7 @@ import { holdHandler } from '../../mocks/handlers/hold';
 import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
 import { thinkingHandler } from '../../mocks/handlers/thinking';
+import { zeroUsageHandler } from '../../mocks/handlers/zero-usage';
 import { useObservabilityEvents } from '../useObservabilityEvents';
 
 // ---------------------------------------------------------------------------
@@ -367,5 +368,62 @@ describe('useObservabilityEvents — no duplicate finalization', () => {
     // stream_completed should exist exactly once
     const completedEvents = events.filter((e) => e.type === 'stream_completed');
     expect(completedEvents).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 12: multi-send ref reset
+// ---------------------------------------------------------------------------
+
+describe('useObservabilityEvents — multi-send reset', () => {
+  it('resets TTFT and token count independently for a second request', async () => {
+    server.use(normalHandler);
+    const { result } = renderWithObservability();
+
+    // First request
+    act(() => {
+      void result.current.stream.send([{ role: 'user', content: 'First' }]);
+    });
+    await waitFor(() => expect(result.current.stream.isStreaming).toBe(false));
+
+    // Second request — refs must reset so metrics are independent
+    act(() => {
+      void result.current.stream.send([{ role: 'user', content: 'Second' }]);
+    });
+    await waitFor(() => expect(result.current.stream.isStreaming).toBe(false));
+
+    const requests = result.current.obs.state.requests;
+    expect(requests).toHaveLength(2);
+    // TTFT should be set independently (firstTokenRef was reset)
+    expect(requests[1].ttft).not.toBeNull();
+    // Output tokens should reflect only the second stream, not cumulative
+    expect(requests[1].outputTokens).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 13: zero-usage fallback to client-side delta count
+// ---------------------------------------------------------------------------
+
+describe('useObservabilityEvents — zero-usage fallback', () => {
+  it('falls back to client-side delta count when server returns zero output tokens', async () => {
+    server.use(zeroUsageHandler);
+    const { result } = renderWithObservability();
+
+    act(() => {
+      void result.current.stream.send([{ role: 'user', content: 'Hello' }]);
+    });
+
+    await waitFor(() => expect(result.current.stream.isStreaming).toBe(false));
+
+    const req = result.current.obs.state.requests[0];
+    expect(req.status).toBe('completed');
+    // zeroUsageHandler emits 3 content_block_delta events; server returns 0.
+    // Client-side fallback should use the delta count (3).
+    expect(req.outputTokens).toBe(3);
+    // Input tokens: server returned 0, no client fallback → null (renders "—").
+    expect(req.inputTokens).toBeNull();
+    // Throughput should be positive since outputTokens > 0.
+    expect(req.throughput).toBeGreaterThan(0);
   });
 });

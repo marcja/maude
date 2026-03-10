@@ -10,7 +10,7 @@
  */
 
 import type { SSEEvent } from '../../../../lib/client/events';
-import type { ChatMessage } from '../../../../lib/server/modelAdapter';
+import type { ChatMessage, StreamResult } from '../../../../lib/server/modelAdapter';
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before any import that resolves the module
@@ -101,9 +101,12 @@ function makeRequest(
   });
 }
 
-/** Async generator that yields the provided token strings. */
-async function* tokenGen(tokens: string[]): AsyncIterable<string> {
-  for (const t of tokens) yield t;
+/** Build a StreamResult from a list of token strings. Usage defaults to null. */
+function tokenGen(tokens: string[]): StreamResult {
+  async function* gen(): AsyncIterable<string> {
+    for (const t of tokens) yield t;
+  }
+  return { tokens: gen(), getUsage: () => null };
 }
 
 /** Build a raw Request with an arbitrary JSON-serialised body for validation tests. */

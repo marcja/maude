@@ -10,14 +10,13 @@
  *
  * Two-column flex layout:
  *   Outer div is flex-row h-screen. Center column is flex-1 min-w-0 so it
- *   fills remaining width when the pane is open, collapsed, or hidden.
+ *   fills remaining width when the pane is expanded or collapsed.
  *   Inner content div retains max-w-3xl mx-auto for readable line lengths.
  *
- * Gear toggle vs pane collapse:
- *   The ⚙ button controls whether the ObservabilityPane is mounted at all.
- *   Once visible, the pane's own ◂/▸ buttons handle collapse to 32px strip.
- *   This two-level visibility keeps the chat page clean when debugging isn't
- *   needed while preserving the pane's internal state when toggling collapse.
+ * Single-level toggle:
+ *   The ⚙ button toggles between expanded (300px) and collapsed (32px strip).
+ *   No separate "hidden" state — the pane is always mounted so context state
+ *   is preserved. Clicking the collapsed strip also expands (for discoverability).
  *
  * Streaming finalization via onComplete callback:
  *   Rather than a useEffect that watches isStreaming for a true→false
@@ -36,15 +35,15 @@
  *   new turns. Suspension threshold: >50px above bottom (SPEC §4.2).
  *
  * Stall detection (useStallDetection, T14):
- *   Watches lastTokenAt from useStream; fires onStall after 8s silence.
- *   isStalled state resets on token arrival or stream end via useEffect.
+ *   useStallDetection returns isStalled directly — no external state or
+ *   effect needed. Resets internally on token arrival or stream end.
  *
  * Thinking blocks (ThinkingBlock, T12):
  *   Live thinking state from useStream renders above the assistant message.
  *   Finalized thinking data stored in history for re-display on scroll-back.
  */
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { InputArea } from '../../components/chat/InputArea';
 import { MessageItem } from '../../components/chat/MessageItem';
 import { MessageList } from '../../components/chat/MessageList';
@@ -78,9 +77,9 @@ export default function ChatPage() {
   // Finalized conversation messages (user turns + completed assistant turns).
   const [history, setHistory] = useState<Message[]>([]);
 
-  // Debug pane visibility — starts hidden; ⚙ button toggles it on/off.
-  // Once visible, the pane's own collapse/expand handles 300px↔32px sizing.
-  const [showPane, setShowPane] = useState(false);
+  // Debug pane: ⚙ button toggles between expanded (300px) and collapsed (32px strip).
+  // Single toggle level — no separate "hidden" vs "collapsed" states.
+  const [paneExpanded, setPaneExpanded] = useState(false);
 
   const { addEvent } = useObservability();
 
@@ -113,16 +112,7 @@ export default function ChatPage() {
   // Stall detection (T14/T15)
   // -------------------------------------------------------------------------
 
-  const [isStalled, setIsStalled] = useState(false);
-  useStallDetection({ isStreaming, lastTokenAt, onStall: () => setIsStalled(true) });
-
-  // Reset isStalled when a new token arrives or streaming ends. useStallDetection
-  // only fires onStall once per stall period — the reset must happen externally
-  // so the indicator disappears on token arrival.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: lastTokenAt is an intentional trigger dep — its change (not value) signals token arrival
-  useEffect(() => {
-    setIsStalled(false);
-  }, [lastTokenAt, isStreaming]);
+  const { isStalled } = useStallDetection({ isStreaming, lastTokenAt });
 
   // -------------------------------------------------------------------------
   // Auto-scroll (extracted to useAutoScroll in T16)
@@ -204,8 +194,8 @@ export default function ChatPage() {
           <button
             type="button"
             aria-label="Toggle debug pane"
-            className={`p-1 text-lg transition-colors ${showPane ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-            onClick={() => setShowPane((prev) => !prev)}
+            className={`p-1 text-lg transition-colors ${paneExpanded ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+            onClick={() => setPaneExpanded((prev) => !prev)}
           >
             ⚙
           </button>
@@ -287,8 +277,11 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Right pane — ObservabilityPane (mounted only when gear is toggled on) */}
-      {showPane && <ObservabilityPane />}
+      {/* Right pane — always mounted; gear toggles between expanded and collapsed strip */}
+      <ObservabilityPane
+        collapsed={!paneExpanded}
+        onToggle={() => setPaneExpanded((prev) => !prev)}
+      />
     </div>
   );
 }

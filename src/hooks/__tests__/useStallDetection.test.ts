@@ -3,9 +3,9 @@
  *
  * Tests for the useStallDetection hook.
  *
- * useStallDetection fires a callback when no new token arrives within 8 seconds
- * of the previous one (or stream start). It resets on each token and clears
- * when the stream ends.
+ * useStallDetection returns `isStalled` — true when no new token arrives
+ * within 8 seconds of the previous one (or stream start). It resets on each
+ * token change and clears when the stream ends.
  *
  * Why jest fake timers: the hook uses setTimeout internally. Fake timers let us
  * advance time without real delays, making the tests instant and deterministic.
@@ -27,35 +27,39 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 1: stall callback fires after timeout
+// Suite 1: stall detection fires after timeout
 // ---------------------------------------------------------------------------
 
 describe('useStallDetection — stall detection', () => {
-  it('calls onStall after 8 seconds with no new token while streaming', () => {
-    const onStall = jest.fn();
-    renderHook(() => useStallDetection({ isStreaming: true, lastTokenAt: null, onStall }));
+  it('returns isStalled=true after 8 seconds with no new token while streaming', () => {
+    const { result } = renderHook(() =>
+      useStallDetection({ isStreaming: true, lastTokenAt: null })
+    );
 
-    // Less than 8s: no stall yet
+    expect(result.current.isStalled).toBe(false);
+
+    // Less than 8s: not stalled yet
     act(() => {
       jest.advanceTimersByTime(7999);
     });
-    expect(onStall).not.toHaveBeenCalled();
+    expect(result.current.isStalled).toBe(false);
 
-    // Exactly 8s: stall fires
+    // Exactly 8s: stalled
     act(() => {
       jest.advanceTimersByTime(1);
     });
-    expect(onStall).toHaveBeenCalledTimes(1);
+    expect(result.current.isStalled).toBe(true);
   });
 
-  it('does not call onStall when isStreaming is false', () => {
-    const onStall = jest.fn();
-    renderHook(() => useStallDetection({ isStreaming: false, lastTokenAt: null, onStall }));
+  it('returns isStalled=false when isStreaming is false', () => {
+    const { result } = renderHook(() =>
+      useStallDetection({ isStreaming: false, lastTokenAt: null })
+    );
 
     act(() => {
       jest.advanceTimersByTime(10000);
     });
-    expect(onStall).not.toHaveBeenCalled();
+    expect(result.current.isStalled).toBe(false);
   });
 });
 
@@ -65,42 +69,60 @@ describe('useStallDetection — stall detection', () => {
 
 describe('useStallDetection — timer reset on token', () => {
   it('resets the 8s timer when lastTokenAt changes', () => {
-    const onStall = jest.fn();
-    const { rerender } = renderHook(
+    const { result, rerender } = renderHook(
       ({ lastTokenAt }: { lastTokenAt: number | null }) =>
-        useStallDetection({ isStreaming: true, lastTokenAt, onStall }),
+        useStallDetection({ isStreaming: true, lastTokenAt }),
       { initialProps: { lastTokenAt: null as number | null } }
     );
 
-    // Advance 7s — no stall yet
+    // Advance 7s — not stalled yet
     act(() => {
       jest.advanceTimersByTime(7000);
     });
-    expect(onStall).not.toHaveBeenCalled();
+    expect(result.current.isStalled).toBe(false);
 
     // Token arrives at 7s — timer should reset to 8s from now
     act(() => {
       rerender({ lastTokenAt: 7000 });
     });
 
-    // Advance another 7s (14s total) — timer was reset so no stall yet
+    // Advance another 7s (14s total) — timer was reset so not stalled yet
     act(() => {
       jest.advanceTimersByTime(7000);
     });
-    expect(onStall).not.toHaveBeenCalled();
+    expect(result.current.isStalled).toBe(false);
 
     // Advance 1 more second — 8s have now passed since last token
     act(() => {
       jest.advanceTimersByTime(1000);
     });
-    expect(onStall).toHaveBeenCalledTimes(1);
+    expect(result.current.isStalled).toBe(true);
   });
 
-  it('does not fire stall if a token arrives just before the deadline', () => {
-    const onStall = jest.fn();
-    const { rerender } = renderHook(
+  it('resets isStalled to false when a new token arrives', () => {
+    const { result, rerender } = renderHook(
       ({ lastTokenAt }: { lastTokenAt: number | null }) =>
-        useStallDetection({ isStreaming: true, lastTokenAt, onStall }),
+        useStallDetection({ isStreaming: true, lastTokenAt }),
+      { initialProps: { lastTokenAt: null as number | null } }
+    );
+
+    // Become stalled
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+    expect(result.current.isStalled).toBe(true);
+
+    // Token arrives — should reset to not stalled
+    act(() => {
+      rerender({ lastTokenAt: 8000 });
+    });
+    expect(result.current.isStalled).toBe(false);
+  });
+
+  it('does not stall if a token arrives just before the deadline', () => {
+    const { result, rerender } = renderHook(
+      ({ lastTokenAt }: { lastTokenAt: number | null }) =>
+        useStallDetection({ isStreaming: true, lastTokenAt }),
       { initialProps: { lastTokenAt: null as number | null } }
     );
 
@@ -116,7 +138,7 @@ describe('useStallDetection — timer reset on token', () => {
     act(() => {
       jest.advanceTimersByTime(7900);
     });
-    expect(onStall).not.toHaveBeenCalled();
+    expect(result.current.isStalled).toBe(false);
   });
 });
 
@@ -126,10 +148,9 @@ describe('useStallDetection — timer reset on token', () => {
 
 describe('useStallDetection — clears on stream end', () => {
   it('cancels the stall timer when isStreaming becomes false', () => {
-    const onStall = jest.fn();
-    const { rerender } = renderHook(
+    const { result, rerender } = renderHook(
       ({ isStreaming }: { isStreaming: boolean }) =>
-        useStallDetection({ isStreaming, lastTokenAt: null, onStall }),
+        useStallDetection({ isStreaming, lastTokenAt: null }),
       { initialProps: { isStreaming: true } }
     );
 
@@ -143,11 +164,31 @@ describe('useStallDetection — clears on stream end', () => {
       rerender({ isStreaming: false });
     });
 
-    // Advance past the 8s mark — onStall must NOT fire
+    // Advance past the 8s mark — must NOT become stalled
     act(() => {
       jest.advanceTimersByTime(5000);
     });
-    expect(onStall).not.toHaveBeenCalled();
+    expect(result.current.isStalled).toBe(false);
+  });
+
+  it('resets isStalled to false when isStreaming becomes false', () => {
+    const { result, rerender } = renderHook(
+      ({ isStreaming }: { isStreaming: boolean }) =>
+        useStallDetection({ isStreaming, lastTokenAt: null }),
+      { initialProps: { isStreaming: true } }
+    );
+
+    // Become stalled
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+    expect(result.current.isStalled).toBe(true);
+
+    // Stream ends — should reset
+    act(() => {
+      rerender({ isStreaming: false });
+    });
+    expect(result.current.isStalled).toBe(false);
   });
 });
 
@@ -155,29 +196,29 @@ describe('useStallDetection — clears on stream end', () => {
 // Suite 4: stall fires only once per stall period
 // ---------------------------------------------------------------------------
 
-describe('useStallDetection — fires once', () => {
-  it('calls onStall exactly once per stall, not repeatedly', () => {
-    const onStall = jest.fn();
-    renderHook(() => useStallDetection({ isStreaming: true, lastTokenAt: null, onStall }));
+describe('useStallDetection — stays stalled', () => {
+  it('stays stalled (does not toggle) after the initial 8s timeout', () => {
+    const { result } = renderHook(() =>
+      useStallDetection({ isStreaming: true, lastTokenAt: null })
+    );
 
     // Fire the 8s stall
     act(() => {
       jest.advanceTimersByTime(8000);
     });
-    expect(onStall).toHaveBeenCalledTimes(1);
+    expect(result.current.isStalled).toBe(true);
 
-    // Advance another 8s — should NOT fire again (no new timer set)
+    // Advance another 8s — should still be stalled (no extra timer set)
     act(() => {
       jest.advanceTimersByTime(8000);
     });
-    expect(onStall).toHaveBeenCalledTimes(1);
+    expect(result.current.isStalled).toBe(true);
   });
 
   it('re-arms the timer if a new token arrives after a stall', () => {
-    const onStall = jest.fn();
-    const { rerender } = renderHook(
+    const { result, rerender } = renderHook(
       ({ lastTokenAt }: { lastTokenAt: number | null }) =>
-        useStallDetection({ isStreaming: true, lastTokenAt, onStall }),
+        useStallDetection({ isStreaming: true, lastTokenAt }),
       { initialProps: { lastTokenAt: null as number | null } }
     );
 
@@ -185,54 +226,18 @@ describe('useStallDetection — fires once', () => {
     act(() => {
       jest.advanceTimersByTime(8000);
     });
-    expect(onStall).toHaveBeenCalledTimes(1);
+    expect(result.current.isStalled).toBe(true);
 
-    // A token arrives after the stall — should re-arm the 8s timer
+    // A token arrives after the stall — should reset and re-arm
     act(() => {
       rerender({ lastTokenAt: 8000 });
     });
+    expect(result.current.isStalled).toBe(false);
 
-    // Another 8s with no token — should fire stall again
+    // Another 8s with no token — should stall again
     act(() => {
       jest.advanceTimersByTime(8000);
     });
-    expect(onStall).toHaveBeenCalledTimes(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Suite 5: callback identity — ref indirection protects against stale closures
-// ---------------------------------------------------------------------------
-
-describe('useStallDetection — callback identity', () => {
-  it('uses the latest onStall callback without resetting the timer', () => {
-    // The hook stores onStall in a ref so that swapping the callback mid-stream
-    // does not restart the setTimeout. This test guards that ref indirection.
-    const onStall1 = jest.fn();
-    const onStall2 = jest.fn();
-
-    const { rerender } = renderHook(
-      ({ onStall }: { onStall: () => void }) =>
-        useStallDetection({ isStreaming: true, lastTokenAt: null, onStall }),
-      { initialProps: { onStall: onStall1 } }
-    );
-
-    // Advance 5s into the stall window
-    act(() => {
-      jest.advanceTimersByTime(5000);
-    });
-
-    // Swap the callback mid-stream (simulates parent re-render with new closure)
-    act(() => {
-      rerender({ onStall: onStall2 });
-    });
-
-    // Advance the remaining 3s — should fire onStall2, NOT onStall1
-    act(() => {
-      jest.advanceTimersByTime(3000);
-    });
-
-    expect(onStall1).not.toHaveBeenCalled();
-    expect(onStall2).toHaveBeenCalledTimes(1);
+    expect(result.current.isStalled).toBe(true);
   });
 });

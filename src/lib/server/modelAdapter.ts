@@ -44,6 +44,22 @@ export interface ChatMessage {
   content: string;
 }
 
+/** Token usage from the model's final streaming chunk. */
+export interface StreamUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/**
+ * Result of streamCompletion — separates the token iterable from the usage
+ * summary so callers can consume tokens first, then read final usage.
+ */
+export interface StreamResult {
+  tokens: AsyncIterable<string>;
+  /** Available only after the tokens iterable is fully consumed. */
+  getUsage(): StreamUsage | null;
+}
+
 /**
  * Typed error thrown by the adapter. The BFF route maps these codes to
  * appropriate SSE error events so the client can show actionable UI.
@@ -76,12 +92,14 @@ export async function streamCompletion(
   messages: ChatMessage[],
   systemPrompt: string,
   signal: AbortSignal
-): Promise<AsyncIterable<string>> {
+): Promise<StreamResult> {
   // Prepend the system prompt as an OpenAI-style system message. Ollama's
   // /v1/chat/completions endpoint accepts the same message array format.
   const body = JSON.stringify({
     model: MODEL,
     stream: true,
+    // Request token usage in the final streaming chunk (OpenAI-compatible option).
+    stream_options: { include_usage: true },
     think: THINK, // Ollama thinking: boolean for DeepSeek/Qwen, level string for gpt-oss
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
   });
@@ -114,8 +132,17 @@ export async function streamCompletion(
     throw new ModelAdapterError('bad_response', 'Ollama response has no body');
   }
 
-  // Return the generator without await — the caller drives consumption.
-  return tokenStream(response.body);
+  // Mutable slot for usage data, populated by tokenStream when it encounters
+  // the final chunk containing usage. Exposed via getUsage() closure.
+  let captured: StreamUsage | null = null;
+  const onUsage = (u: StreamUsage) => {
+    captured = u;
+  };
+
+  return {
+    tokens: tokenStream(response.body, onUsage),
+    getUsage: () => captured,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +168,10 @@ export async function streamCompletion(
  * silently skipped. An empty `content` value is also skipped — these are the
  * role-only frames that appear at the start of the stream.
  */
-async function* tokenStream(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
+async function* tokenStream(
+  body: ReadableStream<Uint8Array>,
+  onUsage: (usage: StreamUsage) => void
+): AsyncIterable<string> {
   // Read the body manually to avoid pulling in a Node stream adapter that
   // isn't needed in the edge runtime.
   const reader = body.getReader();
@@ -179,12 +209,22 @@ async function* tokenStream(body: ReadableStream<Uint8Array>): AsyncIterable<str
           choices?: {
             delta?: { content?: string; reasoning?: string; reasoning_content?: string };
           }[];
+          // OpenAI-compatible usage in the final chunk (stream_options.include_usage).
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
         };
         try {
           parsed = JSON.parse(payload) as typeof parsed;
         } catch {
           // Malformed JSON line — skip rather than crash the whole stream.
           continue;
+        }
+
+        // Capture usage from the final chunk (sent when stream_options.include_usage is true).
+        if (parsed.usage?.prompt_tokens != null && parsed.usage?.completion_tokens != null) {
+          onUsage({
+            promptTokens: parsed.usage.prompt_tokens,
+            completionTokens: parsed.usage.completion_tokens,
+          });
         }
 
         const delta = parsed.choices?.[0]?.delta;
