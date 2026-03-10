@@ -180,7 +180,7 @@ and system prompt tab make the streaming infrastructure teachable and inspectabl
       Test: addEvent stores events; addMetrics stores metrics;
         context accessible in child components
 
-- [ ] T19 — Wire useStream to ObservabilityContext
+- [x] T19 — Wire useStream to ObservabilityContext
       User value: streaming events (TTFT, throughput, errors) now flow to debug pane
       Deliverable: update `src/hooks/useStream.ts`
       Depends: T18, T06

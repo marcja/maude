@@ -16,7 +16,11 @@ export const normalHandler = http.post('/api/chat', () => {
   const encoder = new TextEncoder();
 
   const events: SSEEvent[] = [
-    { type: 'message_start', message_id: 'test-msg-id' },
+    {
+      type: 'message_start',
+      message_id: 'test-msg-id',
+      prompt_used: 'You are a helpful assistant.',
+    },
     { type: 'content_block_start' },
     { type: 'content_block_delta', delta: { text: 'Hello' } },
     { type: 'content_block_delta', delta: { text: ' world' } },

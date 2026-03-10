@@ -18,6 +18,7 @@
  */
 
 import { startTransition, useCallback, useRef, useState } from 'react';
+import type { SSEEvent } from '../lib/client/events';
 import { parseSSEStream } from '../lib/client/sseParser';
 
 // ---------------------------------------------------------------------------
@@ -67,7 +68,22 @@ export type OnStreamComplete = (result: {
   ttft: number | null;
   thinkingText: string;
   thinkingDurationMs: number | null;
+  /** Token usage from message_stop; null on abort (usage unavailable). */
+  usage: { input_tokens: number; output_tokens: number } | null;
+  /** Wall-clock duration (ms) from send() to stream end. */
+  durationMs: number;
+  /** Number of content_block_delta events received. */
+  tokenCount: number;
 }) => void;
+
+/** Options for useStream. Allows injecting cross-cutting concerns (e.g.
+ *  observability) without coupling the hook to specific context providers. */
+export interface UseStreamOptions {
+  /** Called for every SSE event parsed from the stream, before useStream's
+   *  own switch/case processing. Enables observability instrumentation
+   *  without modifying the hook's core logic. */
+  onEvent?: (event: SSEEvent) => void;
+}
 
 type UseStreamResult = StreamState & {
   send: (
@@ -94,7 +110,7 @@ const INITIAL_STATE: StreamState = {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useStream(): UseStreamResult {
+export function useStream(options?: UseStreamOptions): UseStreamResult {
   const [state, setState] = useState<StreamState>(INITIAL_STATE);
 
   // Ref so stop() can abort the current controller without being a dependency
@@ -109,6 +125,13 @@ export function useStream(): UseStreamResult {
   const thinkingTextRef = useRef('');
   const thinkingDurationRef = useRef<number | null>(null);
   const thinkingStartRef = useRef<number | null>(null);
+  const tokenCountRef = useRef(0);
+  const usageRef = useRef<{ input_tokens: number; output_tokens: number } | null>(null);
+
+  // Stable ref for onEvent so the send() useCallback doesn't need it as a dep.
+  // The ref always points to the latest callback without causing re-renders.
+  const onEventRef = useRef(options?.onEvent);
+  onEventRef.current = options?.onEvent;
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -134,15 +157,21 @@ export function useStream(): UseStreamResult {
       thinkingTextRef.current = '';
       thinkingDurationRef.current = null;
       thinkingStartRef.current = null;
+      tokenCountRef.current = 0;
+      usageRef.current = null;
 
       // Build the onComplete result from accumulator refs. Defined inside
       // send() so it's captured in the closure without appearing in the
       // useCallback dependency array (refs are stable across renders).
-      const buildResult = () => ({
+      // durationMs is passed as a parameter because it's computed at call time.
+      const buildResult = (durationMs: number) => ({
         tokens: tokensAccRef.current,
         ttft: ttftRef.current,
         thinkingText: thinkingTextRef.current,
         thinkingDurationMs: thinkingDurationRef.current,
+        usage: usageRef.current,
+        durationMs,
+        tokenCount: tokenCountRef.current,
       });
 
       // Record start time for TTFT calculation (wall-clock performance timer,
@@ -174,10 +203,15 @@ export function useStream(): UseStreamResult {
           // the user has already clicked Stop and a new request may be starting.
           if (controller.signal.aborted) break;
 
+          // Notify the onEvent callback before processing — allows observability
+          // hooks to see every raw SSE event without modifying useStream's logic.
+          onEventRef.current?.(event);
+
           switch (event.type) {
             case 'content_block_delta': {
               // Mirror into ref so onComplete has the final value synchronously.
               tokensAccRef.current += event.delta.text;
+              tokenCountRef.current += 1;
               // Date.now() (not performance.now()) because useStallDetection
               // compares this against future Date.now() calls — both sides must
               // use the same clock. performance.now() is reserved for duration
@@ -239,11 +273,12 @@ export function useStream(): UseStreamResult {
             }
 
             case 'message_stop':
+              usageRef.current = event.usage;
               setState((prev) => ({ ...prev, isStreaming: false }));
               // React 18 automatic batching: onComplete's setState calls batch
               // with the isStreaming: false update above into one render, so
               // the finalized message appears atomically without a flicker frame.
-              onComplete?.(buildResult());
+              onComplete?.(buildResult(performance.now() - startTime));
               break;
 
             case 'error':
@@ -272,7 +307,7 @@ export function useStream(): UseStreamResult {
           // Note: if abort occurs mid-thinking, isThinking remains true in state
           // until the next send() resets via INITIAL_STATE. Consumers should
           // check isStreaming before relying on isThinking.
-          onComplete?.(buildResult());
+          onComplete?.(buildResult(performance.now() - startTime));
         } else {
           setState((prev) => ({
             ...prev,

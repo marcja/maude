@@ -41,9 +41,9 @@ import { MessageList } from '../../components/chat/MessageList';
 import { StallIndicator } from '../../components/chat/StallIndicator';
 import { ThinkingBlock } from '../../components/chat/ThinkingBlock';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
+import { useObservabilityEvents } from '../../hooks/useObservabilityEvents';
 import { useStallDetection } from '../../hooks/useStallDetection';
 import type { OnStreamComplete } from '../../hooks/useStream';
-import { useStream } from '../../hooks/useStream';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,7 +78,7 @@ export default function ChatPage() {
     lastTokenAt,
     send,
     stop,
-  } = useStream();
+  } = useObservabilityEvents();
 
   // -------------------------------------------------------------------------
   // Stall detection (T14/T15)
