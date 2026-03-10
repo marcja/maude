@@ -25,8 +25,12 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
     // because Next.js evaluates the module at build time.
     if (process.env.NODE_ENV === 'production') return;
 
+    // Cancelled flag prevents double-start under React Strict Mode, which
+    // fires effects twice in dev to surface missing cleanup.
+    let cancelled = false;
     void (async () => {
       const { worker, mountMSW } = await import('../mocks/browser');
+      if (cancelled) return;
       await worker.start({
         // bypass: let requests without an active handler reach the real
         // Next.js API routes. This means `pnpm dev` works normally when no
@@ -34,9 +38,13 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
         onUnhandledRequest: 'bypass',
         serviceWorker: { url: '/mockServiceWorker.js' },
       });
+      if (cancelled) return;
       // Expose the string-keyed bridge for Playwright test coordination.
       mountMSW(worker);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // React 19: components can return children directly — no Fragment needed.

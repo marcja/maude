@@ -18,7 +18,7 @@
  *   stream_cancelled.
  */
 
-import { useCallback, useRef } from 'react';
+import { useRef } from 'react';
 import { useObservability } from '../context/ObservabilityContext';
 import type { SSEEvent } from '../lib/client/events';
 import type { ChatMessage } from './useStream';
@@ -48,154 +48,152 @@ export function useObservabilityEvents() {
 
   // onEvent callback — forwarded to useStream via options. Processes raw
   // SSE events and dispatches observability events at lifecycle boundaries.
-  const onEvent = useCallback(
-    (event: SSEEvent) => {
-      const reqId = requestIdRef.current;
+  const onEvent = (event: SSEEvent) => {
+    const reqId = requestIdRef.current;
 
-      switch (event.type) {
-        case 'message_start': {
-          if ('prompt_used' in event && event.prompt_used) {
-            setSystemPrompt(event.prompt_used);
-          }
-          break;
+    switch (event.type) {
+      case 'message_start': {
+        if ('prompt_used' in event && event.prompt_used) {
+          setSystemPrompt(event.prompt_used);
         }
-
-        case 'content_block_delta': {
-          tokenCountRef.current += 1;
-          if (!firstTokenRef.current) {
-            firstTokenRef.current = true;
-            const ttft = performance.now() - startTimeRef.current;
-            const ttftRounded = Math.round(ttft);
-            addEvent({
-              type: 'stream_started',
-              payload: `${ttftRounded}ms TTFT`,
-              timestamp: Date.now(),
-              requestId: reqId,
-            });
-            if (reqId) {
-              updateRequest(reqId, { ttft });
-            }
-          }
-          break;
-        }
-
-        case 'thinking_block_start': {
-          thinkingStartRef.current = performance.now();
-          addEvent({
-            type: 'thinking_started',
-            payload: '',
-            timestamp: Date.now(),
-            requestId: reqId,
-          });
-          break;
-        }
-
-        case 'thinking_block_stop': {
-          const duration =
-            thinkingStartRef.current !== null
-              ? Math.round(performance.now() - thinkingStartRef.current)
-              : 0;
-          addEvent({
-            type: 'thinking_completed',
-            payload: `${duration}ms`,
-            timestamp: Date.now(),
-            requestId: reqId,
-          });
-          thinkingStartRef.current = null;
-          break;
-        }
-
-        case 'message_stop': {
-          finalizedRef.current = true;
-          const durationMs = performance.now() - startTimeRef.current;
-          const durationSec = (durationMs / 1000).toFixed(1);
-          const outputTokens = event.usage.output_tokens;
-          const throughput = durationMs > 0 ? (outputTokens / durationMs) * 1000 : 0;
-
-          addEvent({
-            type: 'stream_completed',
-            payload: `${outputTokens} tok, ${durationSec}s`,
-            timestamp: Date.now(),
-            requestId: reqId,
-          });
-          if (reqId) {
-            updateRequest(reqId, {
-              status: 'completed',
-              throughput,
-              inputTokens: event.usage.input_tokens,
-              outputTokens,
-              durationMs,
-            });
-          }
-          break;
-        }
-
-        case 'error': {
-          finalizedRef.current = true;
-          const message = event.error.message.slice(0, 80);
-          addEvent({
-            type: 'stream_error',
-            payload: message,
-            timestamp: Date.now(),
-            requestId: reqId,
-          });
-          if (reqId) {
-            updateRequest(reqId, { status: 'error' });
-          }
-          break;
-        }
-
-        default:
-          break;
+        break;
       }
-    },
-    [addEvent, updateRequest, setSystemPrompt]
-  );
+
+      case 'content_block_delta': {
+        tokenCountRef.current += 1;
+        if (!firstTokenRef.current) {
+          firstTokenRef.current = true;
+          const ttft = performance.now() - startTimeRef.current;
+          const ttftRounded = Math.round(ttft);
+          addEvent({
+            type: 'stream_started',
+            payload: `${ttftRounded}ms TTFT`,
+            timestamp: Date.now(),
+            requestId: reqId,
+          });
+          if (reqId) {
+            updateRequest(reqId, { ttft });
+          }
+        }
+        break;
+      }
+
+      case 'thinking_block_start': {
+        thinkingStartRef.current = performance.now();
+        addEvent({
+          type: 'thinking_started',
+          payload: '',
+          timestamp: Date.now(),
+          requestId: reqId,
+        });
+        break;
+      }
+
+      case 'thinking_block_stop': {
+        const duration =
+          thinkingStartRef.current !== null
+            ? Math.round(performance.now() - thinkingStartRef.current)
+            : 0;
+        addEvent({
+          type: 'thinking_completed',
+          payload: `${duration}ms`,
+          timestamp: Date.now(),
+          requestId: reqId,
+        });
+        thinkingStartRef.current = null;
+        break;
+      }
+
+      case 'message_stop': {
+        finalizedRef.current = true;
+        const durationMs = performance.now() - startTimeRef.current;
+        const durationSec = (durationMs / 1000).toFixed(1);
+        const outputTokens = event.usage.output_tokens;
+        const throughput = durationMs > 0 ? (outputTokens / durationMs) * 1000 : 0;
+
+        addEvent({
+          type: 'stream_completed',
+          payload: `${outputTokens} tok, ${durationSec}s`,
+          timestamp: Date.now(),
+          requestId: reqId,
+        });
+        if (reqId) {
+          updateRequest(reqId, {
+            status: 'completed',
+            throughput,
+            inputTokens: event.usage.input_tokens,
+            outputTokens,
+            durationMs,
+          });
+        }
+        break;
+      }
+
+      case 'error': {
+        finalizedRef.current = true;
+        const message = event.error.message.slice(0, 80);
+        addEvent({
+          type: 'stream_error',
+          payload: message,
+          timestamp: Date.now(),
+          requestId: reqId,
+        });
+        if (reqId) {
+          updateRequest(reqId, { status: 'error' });
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
 
   const streamResult = useStream({ onEvent });
 
   // Wrap send() to emit message_sent and startRequest before delegating.
-  const wrappedSend = useCallback(
-    (messages: ChatMessage[], conversationId?: string | null, onComplete?: OnStreamComplete) => {
-      // Reset tracking refs for the new request.
-      firstTokenRef.current = false;
-      tokenCountRef.current = 0;
-      startTimeRef.current = performance.now();
-      finalizedRef.current = false;
-      thinkingStartRef.current = null;
+  const wrappedSend = (
+    messages: ChatMessage[],
+    conversationId?: string | null,
+    onComplete?: OnStreamComplete
+  ) => {
+    // Reset tracking refs for the new request.
+    firstTokenRef.current = false;
+    tokenCountRef.current = 0;
+    startTimeRef.current = performance.now();
+    finalizedRef.current = false;
+    thinkingStartRef.current = null;
 
-      const reqId = crypto.randomUUID();
-      requestIdRef.current = reqId;
+    const reqId = crypto.randomUUID();
+    requestIdRef.current = reqId;
 
-      // Compute char count from the last user message (matches SPEC: "{n} chars").
-      const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
-      const charCount = lastUserMsg?.content.length ?? 0;
+    // Compute char count from the last user message (matches SPEC: "{n} chars").
+    const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
+    const charCount = lastUserMsg?.content.length ?? 0;
 
-      addEvent({
-        type: 'message_sent',
-        payload: `${charCount} chars`,
-        timestamp: Date.now(),
-        requestId: reqId,
-      });
+    addEvent({
+      type: 'message_sent',
+      payload: `${charCount} chars`,
+      timestamp: Date.now(),
+      requestId: reqId,
+    });
 
-      startRequest({
-        id: reqId,
-        status: 'streaming',
-        timestamp: Date.now(),
-        ttft: null,
-        throughput: null,
-        inputTokens: null,
-        outputTokens: null,
-        durationMs: null,
-      });
+    startRequest({
+      id: reqId,
+      status: 'streaming',
+      timestamp: Date.now(),
+      ttft: null,
+      throughput: null,
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: null,
+    });
 
-      streamResult.send(messages, conversationId, onComplete);
-    },
-    [streamResult.send, addEvent, startRequest]
-  );
+    streamResult.send(messages, conversationId, onComplete);
+  };
 
   // Wrap stop() to emit stream_cancelled if the stream hasn't already finalized.
-  const wrappedStop = useCallback(() => {
+  const wrappedStop = () => {
     if (!finalizedRef.current && requestIdRef.current) {
       finalizedRef.current = true;
       const reqId = requestIdRef.current;
@@ -210,7 +208,7 @@ export function useObservabilityEvents() {
       updateRequest(reqId, { status: 'cancelled', durationMs });
     }
     streamResult.stop();
-  }, [streamResult.stop, addEvent, updateRequest]);
+  };
 
   return {
     ...streamResult,

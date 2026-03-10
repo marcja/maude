@@ -19,7 +19,7 @@
  *   display it directly without formatting logic at render time.
  */
 
-import { type ReactNode, createContext, useCallback, useContext, useReducer } from 'react';
+import { type ReactNode, createContext, useContext, useReducer } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -158,31 +158,25 @@ const ObservabilityContext = createContext<ObservabilityContextValue | null>(nul
 export function ObservabilityProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(observabilityReducer, INITIAL_OBSERVABILITY_STATE);
 
-  // Stable dispatch helpers — empty deps because Biome's useExhaustiveDependencies
-  // already knows dispatch from useReducer is stable (listing it would be flagged
-  // as an unnecessary dependency).
-  const addEvent = useCallback((event: Omit<ObservabilityEvent, 'id'>) => {
+  const addEvent = (event: Omit<ObservabilityEvent, 'id'>) => {
     dispatch({ type: 'ADD_EVENT', event });
-  }, []);
+  };
 
-  const startRequest = useCallback((request: RequestMetrics) => {
+  const startRequest = (request: RequestMetrics) => {
     dispatch({ type: 'START_REQUEST', request });
-  }, []);
+  };
 
-  const updateRequest = useCallback((id: string, updates: Partial<Omit<RequestMetrics, 'id'>>) => {
+  const updateRequest = (id: string, updates: Partial<Omit<RequestMetrics, 'id'>>) => {
     dispatch({ type: 'UPDATE_REQUEST', id, updates });
-  }, []);
+  };
 
-  const setSystemPrompt = useCallback((prompt: string) => {
+  const setSystemPrompt = (prompt: string) => {
     dispatch({ type: 'SET_SYSTEM_PROMPT', prompt });
-  }, []);
+  };
 
-  const clear = useCallback(() => {
+  const clear = () => {
     dispatch({ type: 'CLEAR' });
-  }, []);
-
-  // Assemble context value. The object is recreated each render because state
-  // changes, but the callback references are stable (useCallback with []).
+  };
   const value: ObservabilityContextValue = {
     state,
     addEvent,

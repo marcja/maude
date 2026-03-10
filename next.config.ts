@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   // (.node file) that webpack can't bundle. Without this, Next.js tries to
   // bundle it and fails at runtime with ENOENT or "cannot find module" errors.
   serverExternalPackages: ['better-sqlite3'],
+
+  // React Compiler auto-memoizes components and hooks, eliminating manual
+  // useCallback/useMemo/React.memo. Next.js integrates the Babel plugin
+  // automatically — SWC still handles everything else.
+  reactCompiler: true,
 };
 
 export default nextConfig;

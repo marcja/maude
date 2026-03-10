@@ -44,7 +44,7 @@
  *   Finalized thinking data stored in history for re-display on scroll-back.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { InputArea } from '../../components/chat/InputArea';
 import { MessageItem } from '../../components/chat/MessageItem';
 import { MessageList } from '../../components/chat/MessageList';
@@ -100,14 +100,14 @@ export default function ChatPage() {
 
   // Callback for MessageItem copy button — emits response_copied to the
   // observability event bus so the Events tab shows copy actions.
-  const handleCopy = useCallback(() => {
+  const handleCopy = () => {
     addEvent({
       type: 'response_copied',
       payload: '',
       timestamp: Date.now(),
       requestId: null,
     });
-  }, [addEvent]);
+  };
 
   // -------------------------------------------------------------------------
   // Stall detection (T14/T15)

@@ -24,7 +24,7 @@
  * reflow via scrollTop assignment. rAF batches them into one scroll per frame.
  */
 
-import { type RefObject, useCallback, useEffect, useState } from 'react';
+import { type RefObject, useEffect, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -96,32 +96,30 @@ export function useAutoScroll({
   }, [tokens, isStreaming, scrollSuspended, listRef]);
 
   // Suspend auto-scroll if user has scrolled more than 50px above bottom
-  // (SPEC §4.2: "more than 50px above the bottom"). Uses useCallback with
-  // empty deps because it only reads from the ref (always current) and calls
-  // setScrollSuspended (stable identity from useState).
-  const handleScroll = useCallback(() => {
+  // (SPEC §4.2: "more than 50px above the bottom").
+  const handleScroll = () => {
     const el = listRef.current;
     if (!el) return;
     setScrollSuspended(el.scrollHeight - el.scrollTop - el.clientHeight > SCROLL_THRESHOLD_PX);
-  }, [listRef]);
+  };
 
   // Imperatively scroll to bottom and clear suspension. Used by the
   // "↓ New content" button — needs both the scroll and the state reset.
   // Synchronous (no rAF) because this is a discrete user action, not a
   // high-frequency streaming update — immediate visual feedback matters more
   // than coalescing.
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = () => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     setScrollSuspended(false);
-  }, [listRef]);
+  };
 
   // Reset suspension without scrolling. Called on new message submit so
   // auto-scroll resumes when the next token arrives (the useEffect above
   // handles the actual scroll).
-  const resetSuspension = useCallback(() => {
+  const resetSuspension = () => {
     setScrollSuspended(false);
-  }, []);
+  };
 
   return { scrollSuspended, handleScroll, scrollToBottom, resetSuspension };
 }
