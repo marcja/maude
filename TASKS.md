@@ -263,3 +263,12 @@ page, full three-column layout with history pane on the left.
         into a helper function that encapsulates block open/close state transitions,
         reducing cognitive load in the POST handler's main loop
       Depends: T11
+
+- [x] T29 — refactor(handlers): extract createSyncHandler factory from MSW handlers
+      Scope: post-commit cleanup identified by analyze-refactoring after T21
+      Changes: extract the repeated encoder → events → ReadableStream → HttpResponse
+        pattern from normal.ts, normal-alice.ts, thinking.ts, markdown.ts,
+        midstream-error.ts, and midstream-error-partial.ts into a
+        createSyncHandler(events: SSEEvent[]) factory in src/mocks/handlerFactory.ts.
+        Each handler reduces to its event array + a one-liner factory call.
+      Depends: T21
