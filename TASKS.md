@@ -272,3 +272,22 @@ page, full three-column layout with history pane on the left.
         createSyncHandler(events: SSEEvent[]) factory in src/mocks/handlerFactory.ts.
         Each handler reduces to its event array + a one-liner factory call.
       Depends: T21
+
+---
+
+## Future Considerations (post-Phase 4)
+
+The following are deliberately out of scope for the current build plan. They
+represent natural next steps once the pedagogical foundation is complete:
+
+- **Reconnection** — SSE streams do not attempt to reconnect on drop; the user
+  must retry manually. A production app would add automatic reconnection with
+  backoff.
+- **TransformStream pipelines** — the BFF currently writes SSE events
+  imperatively; a TransformStream pipeline would make the chunk → parse → emit
+  chain composable and easier to test in isolation.
+- **Zod validation** — request/response boundaries trust TypeScript types at
+  runtime; adding Zod schemas would provide runtime validation at API edges.
+- **State management libraries** — the app uses React context and hooks for all
+  state; a dedicated library (Zustand, Jotai, etc.) could simplify cross-cutting
+  state as the app grows beyond its current scope.
