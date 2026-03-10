@@ -27,6 +27,14 @@ import 'server-only';
 const BASE_URL = process.env.OLLAMA_BASE_URL ?? 'http://host.docker.internal:11434';
 const MODEL = process.env.MODEL_NAME ?? 'gpt-oss:20b';
 
+// Controls the `think` parameter sent to Ollama. Models like DeepSeek-R1 and
+// Qwen 3 accept boolean true/false; gpt-oss requires a level string
+// ("low" | "medium" | "high") and ignores booleans. Default "medium" matches
+// the default model (gpt-oss:20b). Set to "true"/"false" for boolean-mode models.
+const THINK_RAW = process.env.THINK_LEVEL ?? 'medium';
+const THINK: string | boolean =
+  THINK_RAW === 'true' ? true : THINK_RAW === 'false' ? false : THINK_RAW;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -74,6 +82,7 @@ export async function streamCompletion(
   const body = JSON.stringify({
     model: MODEL,
     stream: true,
+    think: THINK, // Ollama thinking: boolean for DeepSeek/Qwen, level string for gpt-oss
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
   });
 
@@ -122,6 +131,12 @@ export async function streamCompletion(
  *   data: {"choices":[{"delta":{"content":"hello"}}]}
  *   data: [DONE]
  *
+ * When thinking is enabled, Ollama delivers reasoning via `delta.reasoning`
+ * on its /v1/chat/completions endpoint (OpenAI uses `delta.reasoning_content`;
+ * both are checked). This generator wraps those tokens in `<think>`/`</think>`
+ * tags so the BFF's existing tag parser handles them transparently. Models
+ * that inline tags directly in `delta.content` are unaffected.
+ *
  * Lines that aren't `data:` prefixed (keep-alive comments, blank lines) are
  * silently skipped. An empty `content` value is also skipped — these are the
  * role-only frames that appear at the start of the stream.
@@ -133,6 +148,9 @@ async function* tokenStream(body: ReadableStream<Uint8Array>): AsyncIterable<str
   const decoder = new TextDecoder();
   // Buffer for text that arrived without a trailing newline (partial SSE line).
   let buffer = '';
+  // Tracks whether we're inside a reasoning_content sequence so we can emit
+  // balanced <think>/</think> wrappers across multiple SSE lines.
+  let inReasoning = false;
 
   try {
     while (true) {
@@ -151,9 +169,17 @@ async function* tokenStream(body: ReadableStream<Uint8Array>): AsyncIterable<str
         if (!trimmed.startsWith('data:')) continue;
 
         const payload = trimmed.slice('data:'.length).trim();
-        if (payload === '[DONE]') return;
+        if (payload === '[DONE]') {
+          // Close any open reasoning wrapper before ending the stream.
+          if (inReasoning) yield '</think>';
+          return;
+        }
 
-        let parsed: { choices?: { delta?: { content?: string } }[] };
+        let parsed: {
+          choices?: {
+            delta?: { content?: string; reasoning?: string; reasoning_content?: string };
+          }[];
+        };
         try {
           parsed = JSON.parse(payload) as typeof parsed;
         } catch {
@@ -161,10 +187,33 @@ async function* tokenStream(body: ReadableStream<Uint8Array>): AsyncIterable<str
           continue;
         }
 
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) yield content;
+        const delta = parsed.choices?.[0]?.delta;
+        // Ollama uses `reasoning`; OpenAI uses `reasoning_content`. Check both.
+        const reasoningContent = delta?.reasoning ?? delta?.reasoning_content;
+        const content = delta?.content;
+
+        // Emit reasoning_content first (if present), wrapped in <think> tags.
+        if (reasoningContent) {
+          if (!inReasoning) {
+            yield '<think>';
+            inReasoning = true;
+          }
+          yield reasoningContent;
+        }
+
+        // Emit visible content, closing the reasoning wrapper if needed.
+        if (content) {
+          if (inReasoning) {
+            yield '</think>';
+            inReasoning = false;
+          }
+          yield content;
+        }
       }
     }
+
+    // Stream ended without [DONE] — close any open reasoning wrapper.
+    if (inReasoning) yield '</think>';
   } finally {
     // Release the lock so the body can be garbage collected even if the
     // consumer breaks out of the for-await loop early (e.g., abort).

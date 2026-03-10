@@ -78,9 +78,13 @@ describe('streamCompletion — request shape', () => {
     const body = JSON.parse(init.body as string) as {
       model: string;
       stream: boolean;
+      think: string | boolean;
       messages: { role: string; content: string }[];
     };
     expect(body.stream).toBe(true);
+    // Default THINK_LEVEL is "medium" (matches default model gpt-oss:20b).
+    // gpt-oss ignores boolean true/false and requires a level string.
+    expect(body.think).toBe('medium');
     expect(typeof body.model).toBe('string');
     expect(body.messages[0]).toEqual({ role: 'system', content: SYSTEM_PROMPT });
     expect(body.messages[1]).toEqual(USER_MESSAGES[0]);
@@ -231,5 +235,109 @@ describe('streamCompletion — malformed JSON in token stream', () => {
     const tokens = await collect(iter);
 
     expect(tokens).toEqual(['before', 'after']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 8: reasoning field → <think> tag wrapping
+// ---------------------------------------------------------------------------
+
+describe('streamCompletion — reasoning support', () => {
+  it('wraps delta.reasoning in <think> tags', async () => {
+    // Ollama's /v1/chat/completions endpoint delivers thinking via
+    // delta.reasoning. The adapter wraps it in <think> tags so the BFF's
+    // existing tag parser handles it transparently.
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"reasoning":"I think..."}}]}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>', 'I think...', '</think>']);
+  });
+
+  it('also supports delta.reasoning_content (OpenAI convention)', async () => {
+    // Fallback for backends that use OpenAI's field name instead of Ollama's.
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"reasoning_content":"fallback"}}]}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>', 'fallback', '</think>']);
+  });
+
+  it('transitions from reasoning to content with proper tag closure', async () => {
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"reasoning":"reasoning"}}]}',
+      'data: {"choices":[{"delta":{"content":"visible"}}]}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>', 'reasoning', '</think>', 'visible']);
+  });
+
+  it('passes through inline <think> tags in content without double-wrapping', async () => {
+    // Models that inline tags directly in content should not be double-wrapped.
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"content":"<think>hello</think>world"}}]}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>hello</think>world']);
+  });
+
+  it('handles both reasoning and content in the same delta', async () => {
+    // Edge case: a single SSE line carries both fields. Reasoning is emitted
+    // first (wrapped), then content follows.
+    const chunk = sseChunk(
+      'data: {"choices":[{"delta":{"reasoning":"R","content":"C"}}]}',
+      'data: [DONE]'
+    );
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>', 'R', '</think>', 'C']);
+  });
+
+  it('closes reasoning tag when stream ends mid-reasoning', async () => {
+    // Model sends reasoning but no content before [DONE] — the adapter must
+    // close the <think> wrapper so the BFF sees a balanced tag pair.
+    const chunk1 = sseChunk('data: {"choices":[{"delta":{"reasoning":"partial"}}]}');
+    const chunk2 = sseChunk('data: [DONE]');
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk1, chunk2]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>', 'partial', '</think>']);
+  });
+
+  it('closes reasoning tag when stream ends without [DONE]', async () => {
+    // Guard against streams that close without a [DONE] sentinel while still
+    // inside a reasoning block.
+    const chunk = sseChunk('data: {"choices":[{"delta":{"reasoning":"abrupt"}}]}');
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
+
+    const iter = await streamCompletion(USER_MESSAGES, SYSTEM_PROMPT, new AbortController().signal);
+    const tokens = await collect(iter);
+
+    expect(tokens).toEqual(['<think>', 'abrupt', '</think>']);
   });
 });
