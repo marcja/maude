@@ -173,7 +173,7 @@ gracefully. No new layout — same single-column chat, but battle-hardened.
 **Milestone M3:** The debug pane is visible and live. Metrics cards, event log,
 and system prompt tab make the streaming infrastructure teachable and inspectable.
 
-- [ ] T18 — ObservabilityContext
+- [x] T18 — ObservabilityContext
       User value: cross-cutting event bus; enables any component to emit to
         the debug pane without coupling to it
       Deliverable: `src/context/ObservabilityContext.tsx`
