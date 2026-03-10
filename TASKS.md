@@ -195,7 +195,7 @@ and system prompt tab make the streaming infrastructure teachable and inspectabl
         newest-first; System Prompt tab shows last prompt_used value;
         pane collapses to 32px strip with "Debug" label
 
-- [ ] T21 — Three-column layout: center + right pane
+- [x] T21 — Three-column layout: center + right pane
       User value: **M3 milestone** — debug pane visible alongside chat
       Deliverable: update `chat/page.tsx` to add right-side ObservabilityPane;
         toggle via "⚙" button; center fills remaining width

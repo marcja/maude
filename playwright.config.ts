@@ -10,6 +10,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
+    // Grant clipboard-write so Copy button tests don't flake on headless CI.
+    permissions: ['clipboard-write'],
   },
   projects: [
     {

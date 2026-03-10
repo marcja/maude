@@ -107,6 +107,23 @@ describe('MessageItem — copy button', () => {
     await userEvent.click(screen.getByRole('button', { name: /copy/i }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Copy this text');
   });
+
+  it('calls onCopy callback when copy button is clicked', async () => {
+    const onCopy = jest.fn();
+    render(<MessageItem sender="assistant" content="Copy me" onCopy={onCopy} />);
+    await userEvent.click(screen.getByRole('button', { name: /copy/i }));
+    // Both clipboard write and onCopy must fire — a refactor that breaks
+    // either side should fail this test.
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Copy me');
+    expect(onCopy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fail when onCopy is omitted and copy is clicked', async () => {
+    render(<MessageItem sender="assistant" content="No callback" />);
+    await userEvent.click(screen.getByRole('button', { name: /copy/i }));
+    // Should not throw — onCopy is optional
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('No callback');
+  });
 });
 
 // ---------------------------------------------------------------------------

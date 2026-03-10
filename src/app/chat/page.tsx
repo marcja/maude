@@ -3,11 +3,21 @@
 /**
  * src/app/chat/page.tsx
  *
- * Single-column chat page — M2 milestone. Wires useStream, MessageList,
- * MessageItem, InputArea, ThinkingBlock, StallIndicator, useAutoScroll,
- * and useStallDetection together.
+ * Two-column chat page — M3 milestone. Center column holds the chat UI;
+ * right column holds the collapsible ObservabilityPane (toggled via ⚙ button).
  *
  * Design decisions:
+ *
+ * Two-column flex layout:
+ *   Outer div is flex-row h-screen. Center column is flex-1 min-w-0 so it
+ *   fills remaining width when the pane is open, collapsed, or hidden.
+ *   Inner content div retains max-w-3xl mx-auto for readable line lengths.
+ *
+ * Gear toggle vs pane collapse:
+ *   The ⚙ button controls whether the ObservabilityPane is mounted at all.
+ *   Once visible, the pane's own ◂/▸ buttons handle collapse to 32px strip.
+ *   This two-level visibility keeps the chat page clean when debugging isn't
+ *   needed while preserving the pane's internal state when toggling collapse.
  *
  * Streaming finalization via onComplete callback:
  *   Rather than a useEffect that watches isStreaming for a true→false
@@ -34,12 +44,14 @@
  *   Finalized thinking data stored in history for re-display on scroll-back.
  */
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { InputArea } from '../../components/chat/InputArea';
 import { MessageItem } from '../../components/chat/MessageItem';
 import { MessageList } from '../../components/chat/MessageList';
 import { StallIndicator } from '../../components/chat/StallIndicator';
 import { ThinkingBlock } from '../../components/chat/ThinkingBlock';
+import { ObservabilityPane } from '../../components/layout/ObservabilityPane';
+import { useObservability } from '../../context/ObservabilityContext';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { useObservabilityEvents } from '../../hooks/useObservabilityEvents';
 import { useStallDetection } from '../../hooks/useStallDetection';
@@ -66,6 +78,12 @@ export default function ChatPage() {
   // Finalized conversation messages (user turns + completed assistant turns).
   const [history, setHistory] = useState<Message[]>([]);
 
+  // Debug pane visibility — starts hidden; ⚙ button toggles it on/off.
+  // Once visible, the pane's own collapse/expand handles 300px↔32px sizing.
+  const [showPane, setShowPane] = useState(false);
+
+  const { addEvent } = useObservability();
+
   const {
     tokens,
     isStreaming,
@@ -79,6 +97,17 @@ export default function ChatPage() {
     send,
     stop,
   } = useObservabilityEvents();
+
+  // Callback for MessageItem copy button — emits response_copied to the
+  // observability event bus so the Events tab shows copy actions.
+  const handleCopy = useCallback(() => {
+    addEvent({
+      type: 'response_copied',
+      payload: '',
+      timestamp: Date.now(),
+      requestId: null,
+    });
+  }, [addEvent]);
 
   // -------------------------------------------------------------------------
   // Stall detection (T14/T15)
@@ -165,75 +194,101 @@ export default function ChatPage() {
   // -------------------------------------------------------------------------
 
   return (
-    // flex flex-col h-screen: full viewport height column layout so MessageList
-    // (flex-1 overflow-y-auto) fills the remaining space and scrolls correctly.
-    // max-w-3xl mx-auto: center content with horizontal breathing room.
-    <div className="chat-page flex flex-col h-screen max-w-3xl mx-auto w-full">
-      <MessageList listRef={listRef} onScroll={handleScroll}>
-        {history.map((m) => (
-          <Fragment key={m.id}>
-            {m.role === 'assistant' && m.thinkingText && (
-              <ThinkingBlock
-                text={m.thinkingText}
-                isThinking={false}
-                durationMs={m.thinkingDurationMs ?? null}
-              />
+    // Outer flex-row: center column fills remaining width; ObservabilityPane
+    // sits on the right at 300px (expanded) or 32px (collapsed).
+    <div className="flex h-screen w-full">
+      {/* Center column — chat UI */}
+      <div className="chat-page flex flex-1 min-w-0 flex-col">
+        {/* Header bar with gear toggle for debug pane */}
+        <div className="flex items-center justify-end border-b border-gray-200 px-4 py-1">
+          <button
+            type="button"
+            aria-label="Toggle debug pane"
+            className={`p-1 text-lg transition-colors ${showPane ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+            onClick={() => setShowPane((prev) => !prev)}
+          >
+            ⚙
+          </button>
+        </div>
+
+        {/* Chat content area — max-w-3xl keeps readable line lengths centered */}
+        <div className="relative flex flex-1 min-w-0 flex-col max-w-3xl mx-auto w-full">
+          <MessageList listRef={listRef} onScroll={handleScroll}>
+            {history.map((m) => (
+              <Fragment key={m.id}>
+                {m.role === 'assistant' && m.thinkingText && (
+                  <ThinkingBlock
+                    text={m.thinkingText}
+                    isThinking={false}
+                    durationMs={m.thinkingDurationMs ?? null}
+                  />
+                )}
+                <MessageItem
+                  sender={m.role}
+                  content={m.content}
+                  ttft={m.ttft}
+                  onCopy={m.role === 'assistant' ? handleCopy : undefined}
+                />
+              </Fragment>
+            ))}
+            {isStreaming && (
+              <>
+                <ThinkingBlock
+                  text={thinkingText}
+                  isThinking={isThinking}
+                  durationMs={thinkingDurationMs}
+                />
+                <MessageItem
+                  sender="assistant"
+                  content={tokens}
+                  isStreaming={isStreaming}
+                  ttft={ttft}
+                  onCopy={handleCopy}
+                />
+                <StallIndicator isStalled={isStalled} onCancel={stop} />
+              </>
             )}
-            <MessageItem sender={m.role} content={m.content} ttft={m.ttft} />
-          </Fragment>
-        ))}
-        {isStreaming && (
-          <>
-            <ThinkingBlock
-              text={thinkingText}
-              isThinking={isThinking}
-              durationMs={thinkingDurationMs}
-            />
-            <MessageItem
-              sender="assistant"
-              content={tokens}
-              isStreaming={isStreaming}
-              ttft={ttft}
-            />
-            <StallIndicator isStalled={isStalled} onCancel={stop} />
-          </>
-        )}
-      </MessageList>
+          </MessageList>
 
-      {isStreaming && scrollSuspended && (
-        <button
-          type="button"
-          className="fixed bottom-20 right-4 bg-blue-600 text-white px-3 py-1 rounded"
-          onClick={scrollToBottom}
-        >
-          ↓ New content
-        </button>
-      )}
-
-      {error && (
-        <div
-          className="chat__error p-2 text-sm text-red-600 bg-red-50 border-t border-red-200 flex items-center gap-2"
-          role="alert"
-        >
-          <span className="flex-1">{error}</span>
-          {failedMessages && (
+          {isStreaming && scrollSuspended && (
             <button
               type="button"
-              className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-              onClick={handleRetry}
+              className="absolute bottom-20 right-4 bg-blue-600 text-white px-3 py-1 rounded"
+              onClick={scrollToBottom}
             >
-              Retry
+              ↓ New content
             </button>
           )}
-        </div>
-      )}
 
-      <InputArea
-        isStreaming={isStreaming}
-        onSubmit={handleSubmit}
-        onStop={stop}
-        onNewChat={handleNewChat}
-      />
+          {error && (
+            <div
+              className="chat__error p-2 text-sm text-red-600 bg-red-50 border-t border-red-200 flex items-center gap-2"
+              role="alert"
+            >
+              <span className="flex-1">{error}</span>
+              {failedMessages && (
+                <button
+                  type="button"
+                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                  onClick={handleRetry}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
+
+          <InputArea
+            isStreaming={isStreaming}
+            onSubmit={handleSubmit}
+            onStop={stop}
+            onNewChat={handleNewChat}
+          />
+        </div>
+      </div>
+
+      {/* Right pane — ObservabilityPane (mounted only when gear is toggled on) */}
+      {showPane && <ObservabilityPane />}
     </div>
   );
 }

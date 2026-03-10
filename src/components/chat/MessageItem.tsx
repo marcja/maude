@@ -32,6 +32,8 @@ interface MessageItemProps {
   isStreaming?: boolean;
   /** Time-to-first-token in ms; badge is hidden when null or omitted. */
   ttft?: number | null;
+  /** Called after clipboard write so the parent can emit observability events. */
+  onCopy?: () => void;
 }
 
 // Named constants keep the JSX ternary readable and make it easy to find all
@@ -43,7 +45,13 @@ const USER_BUBBLE =
 const ASSISTANT_BUBBLE =
   'rounded-2xl rounded-bl-sm bg-gray-100 px-4 py-2 text-gray-900 whitespace-pre-wrap min-h-[2.5rem]';
 
-export function MessageItem({ sender, content, isStreaming = false, ttft }: MessageItemProps) {
+export function MessageItem({
+  sender,
+  content,
+  isStreaming = false,
+  ttft,
+  onCopy,
+}: MessageItemProps) {
   const isUser = sender === 'user';
   return (
     <article className={`mb-3 max-w-2xl ${isUser ? 'ml-auto' : 'mr-auto'}`}>
@@ -65,6 +73,7 @@ export function MessageItem({ sender, content, isStreaming = false, ttft }: Mess
               // Fire-and-forget: no UI feedback in T07; a future task adds
               // a transient "Copied!" confirmation state.
               void navigator.clipboard.writeText(content);
+              onCopy?.();
             }}
           >
             Copy

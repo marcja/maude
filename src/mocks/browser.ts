@@ -21,6 +21,7 @@ import { markdownHandler } from './handlers/markdown';
 import { midstreamErrorHandler } from './handlers/midstream-error';
 import { midstreamErrorPartialHandler } from './handlers/midstream-error-partial';
 import { normalHandler } from './handlers/normal';
+import { normalAliceHandler } from './handlers/normal-alice';
 import { slowHandler } from './handlers/slow';
 import { stallHandler } from './handlers/stall';
 import { thinkingHandler } from './handlers/thinking';
@@ -31,6 +32,7 @@ import { thinkingHandler } from './handlers/thinking';
 
 const HANDLERS = {
   normal: normalHandler,
+  'normal-alice': normalAliceHandler,
   'midstream-error': midstreamErrorHandler,
   'midstream-error-partial': midstreamErrorPartialHandler,
   slow: slowHandler,
