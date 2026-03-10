@@ -22,10 +22,12 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import type { SSEEvent } from '../../lib/client/events';
+import { createSyncHandler } from '../../mocks/handlerFactory';
 import { holdHandler } from '../../mocks/handlers/hold';
 import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
 import { thinkingHandler } from '../../mocks/handlers/thinking';
+import { truncatedHandler } from '../../mocks/handlers/truncated';
 import { encodeEvent } from '../../mocks/utils';
 import type { OnStreamComplete } from '../useStream';
 import { useStream } from '../useStream';
@@ -111,6 +113,9 @@ describe('useStream — error events', () => {
 
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.isStreaming).toBe(false);
+    // Exact message ensures the post-loop truncation guard doesn't overwrite
+    // the SSE error event's own message.
+    expect(result.current.error).toBe('Stream failed');
     // Partial tokens received before the error should be present
     expect(result.current.tokens).toBe('Part');
   });
@@ -643,5 +648,89 @@ describe('useStream — state reset between sends', () => {
       result.current.stop();
     });
     await waitFor(() => expect(result.current.isStreaming).toBe(false));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 14 — truncated stream (connection drop without message_stop)
+// ---------------------------------------------------------------------------
+describe('useStream — truncated stream', () => {
+  it('sets error and clears isStreaming when stream closes without message_stop', async () => {
+    server.use(truncatedHandler);
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.error).toContain('Stream ended without completing');
+    // Partial tokens received before truncation are preserved
+    expect(result.current.tokens).toBe('one two three four five six seven eight');
+  });
+
+  it('sets failedMessages for retry on truncated stream', async () => {
+    server.use(truncatedHandler);
+    const { result } = renderHook(() => useStream());
+    const messages: Parameters<typeof result.current.send>[0] = [{ role: 'user', content: 'Hi' }];
+
+    act(() => {
+      void result.current.send(messages);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.failedMessages).toEqual(messages);
+  });
+
+  it('does not call onComplete on truncated stream', async () => {
+    server.use(truncatedHandler);
+    const onComplete = jest.fn();
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }], null, onComplete);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('leaves isThinking true when stream truncates mid-thinking block', async () => {
+    // Truncation during thinking: thinking_block_start received, but no
+    // thinking_block_stop or message_stop before the connection drops.
+    // isThinking stays true — consumers must gate on isStreaming.
+    server.use(
+      createSyncHandler([
+        { type: 'message_start', message_id: 'think-truncated' },
+        { type: 'content_block_start' },
+        { type: 'thinking_block_start' },
+        { type: 'thinking_delta', delta: { text: 'Reasoning...' } },
+        // Connection drops — no thinking_block_stop, no message_stop
+      ])
+    );
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Think' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.error).toContain('Stream ended without completing');
+    expect(result.current.isThinking).toBe(true);
+    expect(result.current.thinkingText).toBe('Reasoning...');
+  });
+
+  it('detects empty stream as truncation (200 OK, immediate close)', async () => {
+    server.use(createSyncHandler([]));
+    const { result } = renderHook(() => useStream());
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }]);
+    });
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.error).toContain('Stream ended without completing');
+    expect(result.current.tokens).toBe('');
+    expect(result.current.ttft).toBeNull();
   });
 });

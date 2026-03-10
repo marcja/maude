@@ -176,6 +176,10 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
     // not Date.now(), so it isn't affected by system clock adjustments).
     const startTime = performance.now();
     let firstTokenReceived = false;
+    // Tracks whether the stream terminated normally (message_stop or error event).
+    // If the for-await loop exits without setting this, the connection dropped
+    // mid-stream — a truncated response that needs explicit error handling.
+    let receivedStop = false;
 
     try {
       const response = await fetch('/api/chat', {
@@ -271,6 +275,7 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
           }
 
           case 'message_stop':
+            receivedStop = true;
             usageRef.current = event.usage;
             setState((prev) => ({ ...prev, isStreaming: false }));
             // React 18 automatic batching: onComplete's setState calls batch
@@ -280,6 +285,7 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
             break;
 
           case 'error':
+            receivedStop = true;
             setState((prev) => ({
               ...prev,
               isStreaming: false,
@@ -293,6 +299,19 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
           default:
             break;
         }
+      }
+
+      // If the stream closed without message_stop or error event (e.g., proxy
+      // timeout, network reset, server crash after HTTP 200 committed), the
+      // for-await loop exits silently. Detect this and surface it as an error
+      // so the UI can stop the spinner and offer retry.
+      if (!receivedStop && !controller.signal.aborted) {
+        setState((prev) => ({
+          ...prev,
+          isStreaming: false,
+          error: 'Stream ended without completing (connection may have dropped)',
+          failedMessages: messages,
+        }));
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
