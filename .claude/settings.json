@@ -3,17 +3,32 @@
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/check-commit.js" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/check-commit.js"
+          }
+        ]
       },
       {
         "matcher": "Write|Edit|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/check-tasks-write.js" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/check-tasks-write.js"
+          }
+        ]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "node .claude/hooks/post-commit.js" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/post-commit.js"
+          }
+        ]
       }
     ]
   },
@@ -22,5 +37,8 @@
     "Never import from src/lib/server/ in a client component",
     "Always use pnpm, never npm or yarn",
     "Always use biome for linting and formatting; never ESLint or Prettier"
-  ]
+  ],
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  }
 }
