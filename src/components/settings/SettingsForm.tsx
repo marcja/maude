@@ -71,21 +71,24 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
   return (
     <div className="mx-auto max-w-xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
-        <Link href="/chat" className="text-sm text-blue-600 hover:text-blue-700 hover:underline">
+        <h1 className="text-2xl font-light text-content">Settings</h1>
+        <Link
+          href="/chat"
+          className="text-sm text-content-muted hover:text-content transition-colors"
+        >
           Back to chat
         </Link>
       </div>
 
       {showSuccess && (
-        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+        <div className="mb-4 rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3 text-sm text-green-400">
           Settings saved
         </div>
       )}
 
       {saveResult.status === 'error' && (
         <div
-          className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600"
+          className="mb-4 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400"
           role="alert"
         >
           {saveResult.errorMessage}
@@ -94,7 +97,10 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
 
       <form action={saveAction} className="space-y-5">
         <div>
-          <label htmlFor="settings-name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="settings-name"
+            className="block text-sm font-medium text-content-muted mb-1"
+          >
             Name
           </label>
           <input
@@ -103,12 +109,15 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
             type="text"
             defaultValue={currentDefaults.name}
             placeholder="Your name (used in the system prompt)"
-            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+            className="w-full rounded-xl border border-edge bg-surface-raised px-3 py-2 text-sm text-content placeholder:text-content-faint focus:border-edge-hover focus:outline-none"
           />
         </div>
 
         <div>
-          <label htmlFor="settings-prompt" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="settings-prompt"
+            className="block text-sm font-medium text-content-muted mb-1"
+          >
             Personalization prompt
           </label>
           <textarea
@@ -117,14 +126,14 @@ export default function SettingsForm({ initialSettings }: SettingsFormProps) {
             defaultValue={currentDefaults.personalizationPrompt}
             placeholder="Additional instructions for the assistant (e.g. &quot;Be concise&quot;)"
             rows={4}
-            className="w-full resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+            className="w-full resize-none rounded-xl border border-edge bg-surface-raised px-3 py-2 text-sm text-content placeholder:text-content-faint focus:border-edge-hover focus:outline-none"
           />
         </div>
 
         <button
           type="submit"
           disabled={isSaving}
-          className="rounded-xl bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl bg-accent/90 px-4 py-2 text-sm text-surface transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isSaving ? 'Saving…' : 'Save'}
         </button>
