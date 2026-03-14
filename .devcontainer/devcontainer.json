@@ -3,6 +3,9 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
   "customizations": {
     "vscode": {
       "extensions": ["biomejs.biome", "bradlc.vscode-tailwindcss", "ms-playwright.playwright"],
