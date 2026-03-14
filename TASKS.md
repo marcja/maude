@@ -229,7 +229,7 @@ page, full three-column layout with history pane on the left.
           new message sent → request body contains prior messages as context
         - Both panes collapse/expand; center fills available width
 
-- [ ] T24 — Settings page
+- [x] T24 — Settings page
       User value: user can set their name and personalization prompt
       Deliverable: `src/app/settings/page.tsx`
       Depends: T01

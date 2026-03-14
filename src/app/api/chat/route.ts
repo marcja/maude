@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { SSEEvent } from '../../../lib/client/events';
+import { ValidationError, jsonResponse } from '../../../lib/server/apiHelpers';
 import { createConversation, getSettings, insertMessage } from '../../../lib/server/db';
 import { ModelAdapterError, streamCompletion } from '../../../lib/server/modelAdapter';
 import type { ChatMessage } from '../../../lib/server/modelAdapter';
@@ -81,13 +82,6 @@ function validateRequestBody(body: unknown): RequestBody {
     messages: obj.messages as ChatMessage[],
     conversationId: (obj.conversationId as string) ?? null,
   };
-}
-
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -268,10 +262,7 @@ export async function POST(request: Request): Promise<Response> {
     body = validateRequestBody(await request.json());
   } catch (err) {
     if (err instanceof ValidationError) {
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: err.message }, 400);
     }
     throw err;
   }

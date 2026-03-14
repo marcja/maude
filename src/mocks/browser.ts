@@ -28,6 +28,7 @@ import { midstreamErrorHandler } from './handlers/midstream-error';
 import { midstreamErrorPartialHandler } from './handlers/midstream-error-partial';
 import { normalHandler } from './handlers/normal';
 import { normalAliceHandler } from './handlers/normal-alice';
+import { settingsGetHandler, settingsPostHandler } from './handlers/settings';
 import { slowHandler } from './handlers/slow';
 import { stallHandler } from './handlers/stall';
 import { thinkingHandler } from './handlers/thinking';
@@ -50,6 +51,7 @@ const HANDLERS = {
   markdown: markdownHandler,
   hold: holdHandler,
   conversations: [conversationsListHandler, conversationMessagesHandler, conversationDeleteHandler],
+  settings: [settingsGetHandler, settingsPostHandler],
 } satisfies Record<string, RequestHandler | RequestHandler[]>;
 
 export type HandlerKey = keyof typeof HANDLERS;
