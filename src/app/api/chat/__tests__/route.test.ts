@@ -16,6 +16,10 @@ import type { ChatMessage, StreamResult } from '../../../../lib/server/modelAdap
 // Module mocks — must be declared before any import that resolves the module
 // ---------------------------------------------------------------------------
 
+// Neutralise the server-only guard so jest.requireActual can load modelAdapter
+// without triggering its build-time "Client Component" error in plain Node.
+jest.mock('server-only', () => ({}));
+
 // Mock the DB so tests never touch the filesystem. getSettings returns empty
 // settings by default; individual tests override with mockReturnValueOnce.
 // createConversation and insertMessage are no-ops by default; verified in Suite 5.
@@ -27,22 +31,15 @@ jest.mock('../../../../lib/server/db', () => ({
 }));
 
 // Mock the model adapter so no HTTP request is made to Ollama. streamCompletion
-// is replaced per-test with an async generator yielding controlled token sequences.
+// is replaced per-test; ModelAdapterError is the REAL class via requireActual
+// so instanceof checks in the route work against the same prototype.
 jest.mock('../../../../lib/server/modelAdapter', () => {
-  // Re-export ModelAdapterError as the real class so instanceof checks in the
-  // route still work against the mocked module's reference.
-  class ModelAdapterError extends Error {
-    constructor(
-      public readonly code: 'model_unreachable' | 'bad_response',
-      message: string
-    ) {
-      super(message);
-      this.name = 'ModelAdapterError';
-    }
-  }
+  const actual = jest.requireActual<typeof import('../../../../lib/server/modelAdapter')>(
+    '../../../../lib/server/modelAdapter'
+  );
   return {
     streamCompletion: jest.fn(),
-    ModelAdapterError,
+    ModelAdapterError: actual.ModelAdapterError,
   };
 });
 

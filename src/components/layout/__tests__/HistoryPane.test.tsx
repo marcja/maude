@@ -27,7 +27,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
 import {
   FIXTURE_CONVERSATIONS,
   FIXTURE_MESSAGES,
@@ -37,17 +36,14 @@ import {
   conversationsListHandler,
   emptyConversationsHandler,
 } from '../../../mocks/handlers/conversations';
+import { server, setupMSWServer } from '../../../mocks/server';
 import { HistoryPane } from '../HistoryPane';
 
 // ---------------------------------------------------------------------------
-// MSW server
+// MSW server — shared setup from src/mocks/server.ts
 // ---------------------------------------------------------------------------
 
-const server = setupServer();
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+setupMSWServer();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -311,8 +307,8 @@ describe('HistoryPane — refreshToken', () => {
     // Increment refreshToken while collapsed — still no fetch
     rerender(<HistoryPane {...defaultProps} collapsed refreshToken={1} />);
 
-    // Give a tick for any potential async effects
-    await new Promise((r) => setTimeout(r, 50));
-    expect(fetchCount).toBe(0);
+    // Assert the absence of a fetch — waitFor with a short timeout lets React
+    // effects settle without a brittle hardcoded setTimeout.
+    await waitFor(() => expect(fetchCount).toBe(0), { timeout: 200 });
   });
 });

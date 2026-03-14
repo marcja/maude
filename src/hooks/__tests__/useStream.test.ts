@@ -20,7 +20,6 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
 import type { SSEEvent } from '../../lib/client/events';
 import { createSyncHandler } from '../../mocks/handlerFactory';
 import { holdHandler } from '../../mocks/handlers/hold';
@@ -28,19 +27,16 @@ import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
 import { thinkingHandler } from '../../mocks/handlers/thinking';
 import { truncatedHandler } from '../../mocks/handlers/truncated';
+import { server, setupMSWServer } from '../../mocks/server';
 import { encodeEvent } from '../../mocks/utils';
 import type { OnStreamComplete } from '../useStream';
 import { useStream } from '../useStream';
 
 // ---------------------------------------------------------------------------
-// MSW server — shared across all tests in this file
+// MSW server — shared setup from src/mocks/server.ts
 // ---------------------------------------------------------------------------
 
-const server = setupServer();
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+setupMSWServer();
 
 // ---------------------------------------------------------------------------
 // Suite 1: Token accumulation and TTFT

@@ -97,8 +97,12 @@ const baseConfig = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
   // React 19's scheduler creates an internal MessageChannel (MESSAGEPORT) that
-  // Jest cannot clean up, causing "worker failed to exit gracefully" warnings.
-  // forceExit is the recommended workaround until the scheduler is patched.
+  // keeps the Node event loop alive after tests finish. This only affects test
+  // files that inject MessageChannel into the jsdom sandbox (via
+  // jest-environment-with-fetch.js for MSW 2.x compatibility). Node-env and
+  // plain jsdom tests exit cleanly. forceExit terminates the worker after all
+  // tests complete. Verified with --detectOpenHandles 2025-03-14.
+  // Tracking: https://github.com/facebook/react/issues/28701
   forceExit: true,
   // Exclude Playwright E2E tests — they run via `pnpm playwright test`, not Jest.
   testPathIgnorePatterns: ['/node_modules/', '/.next/', '/tests/e2e/', '/.claude/worktrees/'],

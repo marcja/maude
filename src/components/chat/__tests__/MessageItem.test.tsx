@@ -78,12 +78,9 @@ describe('MessageItem — assistant message TTFT badge', () => {
 // ---------------------------------------------------------------------------
 
 describe('MessageItem — copy button', () => {
-  // Capture the original clipboard so we can restore it after each test,
-  // preventing the mock from leaking to other test files in the same worker.
-  const originalClipboard = navigator.clipboard;
-
   beforeEach(() => {
-    // jsdom does not implement clipboard API; provide a mock
+    // jsdom does not implement clipboard API; provide a mock.
+    // configurable: true ensures afterEach can delete it cleanly.
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: jest.fn().mockResolvedValue(undefined) },
       configurable: true,
@@ -91,8 +88,11 @@ describe('MessageItem — copy button', () => {
   });
 
   afterEach(() => {
+    // Reset to undefined — jsdom's navigator.clipboard is undefined by default,
+    // so this restores the original state without needing to capture it ahead
+    // of time. Object.defineProperty is required because clipboard is readonly.
     Object.defineProperty(navigator, 'clipboard', {
-      value: originalClipboard,
+      value: undefined,
       configurable: true,
     });
   });

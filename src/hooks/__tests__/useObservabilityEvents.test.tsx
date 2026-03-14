@@ -19,7 +19,6 @@
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { setupServer } from 'msw/node';
 import type { ReactNode } from 'react';
 import { ObservabilityProvider, useObservability } from '../../context/ObservabilityContext';
 import { holdHandler } from '../../mocks/handlers/hold';
@@ -27,17 +26,14 @@ import { midstreamErrorHandler } from '../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../mocks/handlers/normal';
 import { thinkingHandler } from '../../mocks/handlers/thinking';
 import { zeroUsageHandler } from '../../mocks/handlers/zero-usage';
+import { server, setupMSWServer } from '../../mocks/server';
 import { useObservabilityEvents } from '../useObservabilityEvents';
 
 // ---------------------------------------------------------------------------
-// MSW server
+// MSW server — shared setup from src/mocks/server.ts
 // ---------------------------------------------------------------------------
 
-const server = setupServer();
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+setupMSWServer();
 
 // ---------------------------------------------------------------------------
 // crypto.randomUUID mock — deterministic IDs for assertions

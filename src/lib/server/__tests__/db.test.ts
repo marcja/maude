@@ -2,17 +2,20 @@
  * @jest-environment node
  *
  * Must run in Node (not jsdom) because better-sqlite3 is a native Node addon.
- * Tests use an in-memory database so no /data/ directory is needed and each
- * module re-import gets a fresh, isolated SQLite instance.
+ * Tests use createDatabase(':memory:') so no /data/ directory is needed and
+ * each call gets a fresh, isolated SQLite instance — no jest.resetModules()
+ * or require() hacks needed.
  */
 
-// Helper: re-import the db module in isolation so each suite gets a fresh DB.
-// jest.resetModules() clears the module registry; the next require() re-runs
-// the module initializer (which opens a new :memory: connection and re-runs the migration).
-function freshDb() {
-  jest.resetModules();
-  process.env.DB_PATH = ':memory:';
-  return require('../db') as typeof import('../db');
+// Neutralise the server-only guard so the real module can load in plain Node.
+jest.mock('server-only', () => ({}));
+
+import { createDatabase } from '../db';
+import type { DatabaseInstance } from '../db';
+
+/** Create a fresh in-memory database for each test or suite. */
+function freshDb(): DatabaseInstance {
+  return createDatabase(':memory:');
 }
 
 describe('migration', () => {
