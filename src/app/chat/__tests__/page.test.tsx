@@ -82,11 +82,16 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 /** Wraps ChatShell with ObservabilityProvider — required by useObservabilityEvents. */
-function renderChatPage(initialConversations: ConversationSummary[] = []) {
+function renderChatPage(
+  initialConversations: ConversationSummary[] = [],
+  extraProps: Partial<React.ComponentProps<typeof ChatShell>> = {}
+) {
   function Wrapper({ children }: { children: ReactNode }) {
     return <ObservabilityProvider>{children}</ObservabilityProvider>;
   }
-  return render(<ChatShell initialConversations={initialConversations} />, { wrapper: Wrapper });
+  return render(<ChatShell initialConversations={initialConversations} {...extraProps} />, {
+    wrapper: Wrapper,
+  });
 }
 
 /** Type a message into the chat input and press Enter to submit. */
@@ -251,8 +256,8 @@ describe('ChatPage — handleSelectConversation', () => {
     const user = userEvent.setup();
     renderChatPage();
 
-    // Expand history pane
-    await user.click(screen.getByRole('button', { name: /expand history/i }));
+    // Expand history pane via the "View history" icon in the collapsed sidebar
+    await user.click(screen.getByRole('button', { name: /view history/i }));
 
     // Wait for conversations to load
     await waitFor(() => {
@@ -284,8 +289,9 @@ describe('ChatPage — handleNewChat', () => {
     await submitMessage(user, 'Hello');
     await waitFor(() => expect(screen.getByText('Hello world')).toBeInTheDocument());
 
-    // Click "+ New chat" via the header button (InputArea's New chat is hidden on mobile)
-    await user.click(screen.getByRole('button', { name: /\+ new chat/i }));
+    // Click "New chat" via the sidebar icon button (first match; InputArea has another)
+    const newChatButtons = screen.getAllByRole('button', { name: /^new chat$/i });
+    await user.click(newChatButtons[0]);
 
     // History should be cleared — assistant message gone
     await waitFor(() => {
@@ -300,26 +306,23 @@ describe('ChatPage — handleNewChat', () => {
 // ---------------------------------------------------------------------------
 
 describe('ChatPage — UI integration', () => {
-  it('renders header with Maude and Settings navigation links', () => {
+  it('renders sidebar with settings link', () => {
     server.use(emptyConversationsHandler);
     renderChatPage();
 
-    expect(screen.getByRole('link', { name: /maude/i })).toHaveAttribute('href', '/');
+    // Settings link is in the sidebar icon strip
     expect(screen.getByRole('link', { name: /settings/i })).toHaveAttribute('href', '/settings');
   });
 
-  it('toggles the debug pane when gear button is clicked', async () => {
+  it('toggles the debug pane when debug icon is clicked', async () => {
     server.use(emptyConversationsHandler);
     const user = userEvent.setup();
     renderChatPage();
 
-    const gearButton = screen.getByRole('button', { name: /toggle debug pane/i });
-
-    // Initially collapsed — "Debug" vertical label should be visible
-    expect(screen.getByText('Debug')).toBeInTheDocument();
+    const debugButton = screen.getByRole('button', { name: /expand debug pane/i });
 
     // Click to expand
-    await user.click(gearButton);
+    await user.click(debugButton);
 
     // Expanded pane shows tabs
     await waitFor(() => {
@@ -343,7 +346,7 @@ describe('ChatPage — UI integration', () => {
     });
 
     // Expand history pane and select a conversation — should stop the stream
-    await user.click(screen.getByRole('button', { name: /expand history/i }));
+    await user.click(screen.getByRole('button', { name: /view history/i }));
     await waitFor(() => expect(screen.getByText('First conversation')).toBeInTheDocument());
     await user.click(screen.getByText('First conversation'));
 
@@ -378,13 +381,93 @@ describe('ChatPage — initialConversations prop', () => {
     const user = userEvent.setup();
     renderChatPage(FIXTURE_CONVERSATIONS);
 
-    // Expand history pane
-    await user.click(screen.getByRole('button', { name: /expand history/i }));
+    // Expand history pane via the "View history" icon in the collapsed sidebar
+    await user.click(screen.getByRole('button', { name: /view history/i }));
 
     // Conversations from the prop should be visible immediately even though
     // the fetch is still in-flight. This proves the server component's
     // initialConversations prop eliminates the loading flash.
     expect(screen.getByText('First conversation')).toBeInTheDocument();
     expect(screen.getByText('Second conversation')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 8: URL-based conversation routing
+// ---------------------------------------------------------------------------
+
+describe('ChatPage — URL sync', () => {
+  let pushStateSpy: jest.SpyInstance;
+  let replaceStateSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    pushStateSpy = jest.spyOn(window.history, 'pushState').mockImplementation(() => {});
+    replaceStateSpy = jest.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    pushStateSpy.mockRestore();
+    replaceStateSpy.mockRestore();
+  });
+
+  it('calls replaceState with /chat/{id} after the first message completes', async () => {
+    const { handler } = createCapturingHandler('new-conv-id');
+    server.use(handler, emptyConversationsHandler);
+    const user = userEvent.setup();
+    renderChatPage();
+
+    await submitMessage(user, 'Hello');
+    await waitFor(() => expect(screen.getByText('Reply')).toBeInTheDocument());
+
+    expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '/chat/new-conv-id');
+  });
+
+  it('calls pushState with /chat/{id} when selecting a conversation', async () => {
+    server.use(conversationsListHandler, conversationMessagesHandler);
+    const user = userEvent.setup();
+    renderChatPage();
+
+    // Expand history pane and select a conversation
+    await user.click(screen.getByRole('button', { name: /view history/i }));
+    await waitFor(() => expect(screen.getByText('First conversation')).toBeInTheDocument());
+    await user.click(screen.getByText('First conversation'));
+
+    await waitFor(() => {
+      expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/chat/conv-1');
+    });
+  });
+
+  it('calls pushState with /chat when clicking New Chat', async () => {
+    server.use(normalHandler, emptyConversationsHandler);
+    const user = userEvent.setup();
+    renderChatPage();
+
+    // Send a message so we have an active conversation
+    await submitMessage(user, 'Hello');
+    await waitFor(() => expect(screen.getByText('Hello world')).toBeInTheDocument());
+
+    // Click "New chat"
+    const newChatButtons = screen.getAllByRole('button', { name: /^new chat$/i });
+    await user.click(newChatButtons[0]);
+
+    expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/chat');
+  });
+
+  it('renders pre-fetched messages from initialMessages prop', () => {
+    server.use(emptyConversationsHandler);
+    renderChatPage([], {
+      initialConversationId: 'conv-abc',
+      initialConversationTitle: 'Pre-fetched conversation',
+      initialMessages: FIXTURE_MESSAGES.map((m) => ({
+        ...m,
+        conversation_id: 'conv-abc',
+      })),
+    });
+
+    // Messages should appear immediately without any fetch
+    expect(screen.getByText('Hello there')).toBeInTheDocument();
+    expect(screen.getByText('Hi! How can I help?')).toBeInTheDocument();
+    // Title should be displayed in the header
+    expect(screen.getByText('Pre-fetched conversation')).toBeInTheDocument();
   });
 });
