@@ -81,6 +81,11 @@ export default function SettingsPage() {
           throw new Error('Failed to save settings');
         }
 
+        // Update loadedSettings so that when React 19 resets the form after
+        // the action completes, the uncontrolled inputs' defaultValues reflect
+        // the newly saved values instead of reverting to the pre-save state.
+        setLoadedSettings({ name, personalizationPrompt });
+
         return { status: 'success', errorMessage: '' };
       } catch {
         return { status: 'error', errorMessage: 'Failed to save settings' };

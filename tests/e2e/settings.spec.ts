@@ -59,6 +59,12 @@ test('settings: saved values persist on reload', async ({ page }) => {
   // Wait for success feedback to confirm save completed
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5000 });
 
+  // Verify saved values are still visible immediately after save — before
+  // any reload. React 19 resets forms after actions; the component must
+  // update defaultValues so fields don't revert to stale values.
+  await expect(page.getByLabel(/name/i)).toHaveValue('Diana');
+  await expect(page.getByLabel(/personalization/i)).toHaveValue('Always explain your reasoning');
+
   // Reload the page — MSW handlers retain in-memory state so the saved
   // values should be returned by the GET request on mount.
   await page.reload();

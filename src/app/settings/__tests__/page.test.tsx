@@ -120,6 +120,12 @@ describe('SettingsPage — saving', () => {
     await waitFor(() => {
       expect(screen.getByText(/settings saved/i)).toBeInTheDocument();
     });
+
+    // Form fields must retain the saved values after React 19's form reset.
+    // React 19 resets uncontrolled inputs to their defaultValue after a form
+    // action completes — so loadedSettings must be updated to match.
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Bob');
+    expect(screen.getByLabelText(/personalization/i)).toHaveValue('Be helpful');
   });
 
   it('shows error feedback when save fails', async () => {
