@@ -8,7 +8,12 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": ["biomejs.biome", "bradlc.vscode-tailwindcss", "ms-playwright.playwright"],
+      "extensions": [
+        "biomejs.biome",
+        "bradlc.vscode-tailwindcss",
+        "ms-playwright.playwright",
+        "orta.vscode-jest"
+      ],
       "settings": {
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "biomejs.biome",
