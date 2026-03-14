@@ -159,22 +159,95 @@ describe('MessageItem — markdown rendering', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 5: streaming spinner
+// Suite 5: streaming indicator (unified pulsing dot)
 // ---------------------------------------------------------------------------
 
-describe('MessageItem — streaming spinner', () => {
-  it('shows the spinner when isStreaming is true', () => {
+describe('MessageItem — streaming indicator', () => {
+  it('shows the indicator when isStreaming is true', () => {
     render(<MessageItem sender="assistant" content="" isStreaming={true} />);
     expect(screen.getByLabelText('Streaming indicator')).toBeInTheDocument();
   });
 
-  it('hides the spinner when isStreaming is false', () => {
+  it('hides the indicator when isStreaming is false', () => {
     render(<MessageItem sender="assistant" content="Done" isStreaming={false} />);
     expect(screen.queryByLabelText('Streaming indicator')).not.toBeInTheDocument();
   });
 
-  it('hides the spinner when isStreaming is omitted', () => {
+  it('hides the indicator when isStreaming is omitted', () => {
     render(<MessageItem sender="assistant" content="Done" />);
     expect(screen.queryByLabelText('Streaming indicator')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 6: stall indicator inline in footer
+// ---------------------------------------------------------------------------
+
+describe('MessageItem — stall indicator', () => {
+  it('shows "Still working…" text when stalled', () => {
+    render(
+      <MessageItem sender="assistant" content="partial" isStreaming={true} isStalled={true} />
+    );
+    expect(screen.getByText(/Still working…/)).toBeInTheDocument();
+  });
+
+  it('does not show "Still working…" when streaming but not stalled', () => {
+    render(
+      <MessageItem sender="assistant" content="partial" isStreaming={true} isStalled={false} />
+    );
+    expect(screen.queryByText(/Still working…/)).not.toBeInTheDocument();
+  });
+
+  it('renders Cancel button when stalled and onCancel is provided', () => {
+    render(
+      <MessageItem
+        sender="assistant"
+        content="partial"
+        isStreaming={true}
+        isStalled={true}
+        onCancel={jest.fn()}
+      />
+    );
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+  });
+
+  it('calls onCancel when Cancel is clicked', async () => {
+    const handleCancel = jest.fn();
+    render(
+      <MessageItem
+        sender="assistant"
+        content="partial"
+        isStreaming={true}
+        isStalled={true}
+        onCancel={handleCancel}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(handleCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render Cancel button when onCancel is omitted', () => {
+    render(
+      <MessageItem sender="assistant" content="partial" isStreaming={true} isStalled={true} />
+    );
+    expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the streaming indicator visible when stalled', () => {
+    render(
+      <MessageItem sender="assistant" content="partial" isStreaming={true} isStalled={true} />
+    );
+    // The pulsing dot serves as the streaming indicator in both states
+    expect(screen.getByLabelText('Streaming indicator')).toBeInTheDocument();
+  });
+
+  it('stall content lives inside a live-region element for accessibility', () => {
+    render(
+      <MessageItem sender="assistant" content="partial" isStreaming={true} isStalled={true} />
+    );
+    // <output> has implicit role="status" — screen readers announce stall text
+    const output = screen.getByLabelText('Streaming indicator');
+    expect(output.tagName).toBe('OUTPUT');
+    expect(output).toHaveTextContent(/Still working/);
   });
 });

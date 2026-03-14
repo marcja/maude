@@ -3,11 +3,10 @@
 /**
  * src/components/chat/InputArea.tsx
  *
- * The chat input bar: textarea, Send button, and a Stop button that swaps in
- * during streaming. Purely presentational — all state and callbacks come from
- * props so T10 can wire them to useStream without this component importing the
- * hook directly. This matches the MessageItem pattern and keeps tests simple
- * (no MSW, no renderHook needed).
+ * The chat input bar: textarea + action row below. Two-row layout matching
+ * modern chat conventions (Claude.ai, Perplexity, etc.):
+ *   Row 1: full-width textarea where the user types
+ *   Row 2: action buttons (send/stop) right-aligned
  *
  * Design decisions:
  * - Controlled textarea via useState so we can clear it after submit without
@@ -20,7 +19,8 @@
  *   disabled Send sitting next to an active Stop.
  * - handleSubmit trims the value before passing it upstream — trailing newlines
  *   from accidental Shift+Enter presses should not reach the model.
- * - onNewChat is optional: T10 will supply it; future callers can omit it.
+ * - Send button is a circular up-arrow icon (Perplexity convention) rather than
+ *   a text "Send" button.
  */
 
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -36,7 +36,7 @@ interface InputAreaProps {
   onNewChat?: () => void;
 }
 
-export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAreaProps) {
+export function InputArea({ isStreaming, onSubmit, onStop }: InputAreaProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -76,20 +76,12 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
   const isEmpty = value.trim().length === 0;
 
   return (
-    <div className="border-t border-gray-200 bg-white px-4 py-3">
-      <div className="flex items-end gap-2">
-        {onNewChat != null && (
-          <button
-            type="button"
-            onClick={onNewChat}
-            className="hidden sm:block shrink-0 appearance-none rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            New chat
-          </button>
-        )}
+    <div className="px-4 py-3">
+      <div className="flex flex-col rounded-xl border border-edge bg-surface-raised transition-colors focus-within:border-edge-hover">
+        {/* Row 1: full-width textarea */}
         <textarea
           ref={textareaRef}
-          className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+          className="max-h-32 min-h-[44px] w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm text-content placeholder:text-content-faint focus:outline-none"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -97,32 +89,56 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
           aria-label="Message input"
           rows={1}
         />
-        {isStreaming ? (
-          <button
-            type="button"
-            onClick={onStop}
-            className="shrink-0 rounded-xl bg-red-500 px-4 py-2 text-sm text-white transition-colors hover:bg-red-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            Stop
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isEmpty}
-            className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            aria-label="Send message"
-          >
-            Send
-          </button>
-        )}
+
+        {/* Row 2: action buttons right-aligned */}
+        <div className="flex items-center justify-end px-3 pb-2">
+          {/* Send/Stop share identical h-8 w-8 circular shape so the button
+               doesn't shift position when toggling between states. */}
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400 transition-colors hover:bg-red-500/30 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              aria-label="Stop"
+            >
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                <title>Stop</title>
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isEmpty}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/90 text-surface transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-30 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              aria-label="Send message"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <title>Send</title>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
-      {/* Keyboard shortcut hint — hidden during streaming to avoid clutter */}
-      {!isStreaming && (
-        <p className="mt-1 text-center text-xs text-gray-400">
-          Enter to send, Shift+Enter for newline
-        </p>
-      )}
+      {/* Keyboard shortcut hint — invisible during streaming but still occupies
+           space so the input area height doesn't shift when toggling. */}
+      <p
+        className={`mt-1.5 text-center text-xs ${isStreaming ? 'text-transparent' : 'text-content-faint'}`}
+      >
+        Enter to send, Shift+Enter for newline
+      </p>
     </div>
   );
 }

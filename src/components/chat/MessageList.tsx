@@ -57,18 +57,19 @@ export function MessageList({
     // breaking auto-scroll and the "↓ New content" button.
     <div
       ref={listRef}
-      className="message-list flex-1 overflow-y-auto bg-gray-50 p-4"
+      data-testid="message-list"
+      className="message-list flex-1 overflow-y-auto p-4"
       onScroll={onScroll}
     >
       {showEmptyState ? (
         <div className="flex h-full flex-col items-center justify-center gap-4">
-          <h2 className="text-2xl font-semibold text-gray-400">How can I help?</h2>
+          <h2 className="text-2xl font-light text-content-muted">How can I help?</h2>
           <div className="flex flex-wrap justify-center gap-2">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 type="button"
-                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                className="rounded-full border border-edge px-4 py-2 text-sm text-content-muted transition-all hover:border-edge-hover hover:bg-surface-raised hover:text-content"
                 onClick={() => onSuggestionClick?.(s)}
               >
                 {s}

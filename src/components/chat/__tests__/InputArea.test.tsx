@@ -213,43 +213,5 @@ describe('InputArea — disabled during streaming', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Suite 6: New chat button
-// ---------------------------------------------------------------------------
-
-describe('InputArea — New chat button', () => {
-  it('does not render the New chat button when onNewChat is omitted', () => {
-    render(<InputArea isStreaming={false} onSubmit={jest.fn()} onStop={jest.fn()} />);
-
-    expect(screen.queryByRole('button', { name: /new chat/i })).not.toBeInTheDocument();
-  });
-
-  it('renders the New chat button when onNewChat is provided', () => {
-    render(
-      <InputArea
-        isStreaming={false}
-        onSubmit={jest.fn()}
-        onStop={jest.fn()}
-        onNewChat={jest.fn()}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: /new chat/i })).toBeInTheDocument();
-  });
-
-  it('calls onNewChat when the New chat button is clicked', async () => {
-    const onNewChat = jest.fn();
-    render(
-      <InputArea
-        isStreaming={false}
-        onSubmit={jest.fn()}
-        onStop={jest.fn()}
-        onNewChat={onNewChat}
-      />
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: /new chat/i }));
-
-    expect(onNewChat).toHaveBeenCalledTimes(1);
-  });
-});
+// Suite 6 removed: New chat button was moved to the sidebar (HistoryPane).
+// InputArea no longer has an onNewChat prop or + button.

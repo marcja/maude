@@ -69,10 +69,10 @@ export function ThinkingBlock({ text, isThinking, durationMs }: ThinkingBlockPro
   const contentVisible = isThinking || open;
 
   return (
-    <div className="thinking-block mb-2 rounded border border-gray-200 bg-gray-50 text-sm">
+    <div className="thinking-block mb-2 rounded-lg border border-edge bg-surface-raised text-sm">
       <button
         type="button"
-        className="thinking-block__header flex w-full items-center gap-1 px-3 py-1.5 text-left text-gray-500 hover:bg-gray-100"
+        className="thinking-block__header flex w-full items-center gap-1 px-3 py-1.5 text-left text-content-muted hover:bg-surface-overlay rounded-lg transition-colors"
         onClick={() => setOpen((o) => !o)}
         // Disable toggle while streaming — clicking during stream would collapse
         // live content. The button remains in the DOM for layout consistency.
@@ -90,7 +90,7 @@ export function ThinkingBlock({ text, isThinking, durationMs }: ThinkingBlockPro
       </button>
 
       {contentVisible && (
-        <div className="thinking-block__content max-h-[200px] overflow-y-auto px-3 py-2 font-mono text-xs text-gray-600 whitespace-pre-wrap">
+        <div className="thinking-block__content max-h-[200px] overflow-y-auto px-3 py-2 font-mono text-xs text-content-muted whitespace-pre-wrap">
           {text}
         </div>
       )}

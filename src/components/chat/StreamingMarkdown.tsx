@@ -49,51 +49,58 @@ const REMARK_PLUGINS = [remarkGfm];
 // ---------------------------------------------------------------------------
 
 const COMPONENTS = {
-  // Headings
+  // Headings — clear visual hierarchy above 15px body text.
+  // Large mt creates section breaks; first:mt-0 avoids a gap at the top.
   h1: ({ children }: { children?: React.ReactNode }) => (
-    <h1 className="mb-2 text-xl font-bold">{children}</h1>
+    <h1 className="mt-8 mb-3 text-xl font-bold text-content first:mt-0">{children}</h1>
   ),
   h2: ({ children }: { children?: React.ReactNode }) => (
-    <h2 className="mb-2 text-lg font-semibold">{children}</h2>
+    <h2 className="mt-7 mb-2 text-lg font-semibold text-content first:mt-0">{children}</h2>
   ),
   h3: ({ children }: { children?: React.ReactNode }) => (
-    <h3 className="mb-1 text-base font-semibold">{children}</h3>
+    <h3 className="mt-5 mb-1.5 text-base font-semibold text-content first:mt-0">{children}</h3>
   ),
-  // Paragraphs: margin between paragraphs, not after the last one
-  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
+  // Paragraphs: generous spacing (~1.3em at 15px body)
+  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-5 last:mb-0">{children}</p>,
   // Code blocks and inline code
   code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
     const isBlock = className?.startsWith('language-');
     return isBlock ? (
       // Block code: pre + code are rendered separately by react-markdown;
       // className carries the language- prefix for the inner <code>.
-      <code className="block overflow-x-auto rounded bg-gray-100 px-3 py-2 font-mono text-sm">
+      <code className="block overflow-x-auto rounded-lg bg-surface-dim px-4 py-3 font-mono text-sm leading-relaxed text-content-muted">
         {children}
       </code>
     ) : (
-      <code className="rounded bg-gray-100 px-1 font-mono text-sm">{children}</code>
+      <code className="rounded bg-surface-overlay px-1.5 py-0.5 font-mono text-sm text-accent">
+        {children}
+      </code>
     );
   },
-  pre: ({ children }: { children?: React.ReactNode }) => <pre className="mb-2">{children}</pre>,
-  // Lists
+  pre: ({ children }: { children?: React.ReactNode }) => <pre className="mb-5">{children}</pre>,
+  // Lists — block-level margin matches paragraphs; items are tight within
   ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="mb-2 list-disc pl-5">{children}</ul>
+    <ul className="mb-5 list-disc pl-5">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="mb-2 list-decimal pl-5">{children}</ol>
+    <ol className="mb-5 list-decimal pl-5">{children}</ol>
   ),
-  li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
+  // [&>p]:mb-0 strips paragraph margins inside loose list items (Markdown
+  // wraps items separated by blank lines in <p> tags).
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="mb-1.5 [&>p]:mb-0">{children}</li>
+  ),
   // Tables (GFM)
   table: ({ children }: { children?: React.ReactNode }) => (
-    <table className="mb-2 w-full border-collapse text-sm">{children}</table>
+    <table className="mb-5 w-full border-collapse text-sm">{children}</table>
   ),
   th: ({ children }: { children?: React.ReactNode }) => (
-    <th className="border border-gray-300 bg-gray-50 px-2 py-1 text-left font-semibold">
+    <th className="border border-edge bg-surface-raised px-3 py-1.5 text-left font-semibold text-content">
       {children}
     </th>
   ),
   td: ({ children }: { children?: React.ReactNode }) => (
-    <td className="border border-gray-300 px-2 py-1">{children}</td>
+    <td className="border border-edge px-3 py-1.5">{children}</td>
   ),
   // Links — open in new tab; rel noopener prevents opener access
   a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
@@ -101,14 +108,14 @@ const COMPONENTS = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-blue-600 underline hover:text-blue-800"
+      className="text-accent underline hover:text-accent-hover"
     >
       {children}
     </a>
   ),
-  // Blockquotes
+  // [&>p]:mb-0 prevents double-spacing inside blockquotes from nested <p> margins
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="mb-2 border-l-4 border-gray-300 pl-3 italic text-gray-600">
+    <blockquote className="my-5 border-l-4 border-edge pl-4 italic text-content-muted [&>p]:mb-0">
       {children}
     </blockquote>
   ),
