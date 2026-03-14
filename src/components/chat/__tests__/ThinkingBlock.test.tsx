@@ -65,6 +65,14 @@ describe('ThinkingBlock — completed state', () => {
     render(<ThinkingBlock text="quick" isThinking={false} durationMs={500} />);
     expect(screen.getByText(/Thought for 0s/)).toBeInTheDocument();
   });
+
+  it('renders "Thought" without duration when durationMs is null', () => {
+    // History-restored messages have no timing data — display bare "Thought"
+    // instead of the misleading "Thought for 0s".
+    render(<ThinkingBlock text="some thinking" isThinking={false} durationMs={null} />);
+    expect(screen.getByText('Thought')).toBeInTheDocument();
+    expect(screen.queryByText(/Thought for/)).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------

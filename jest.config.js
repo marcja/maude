@@ -101,7 +101,7 @@ const baseConfig = {
   // forceExit is the recommended workaround until the scheduler is patched.
   forceExit: true,
   // Exclude Playwright E2E tests — they run via `pnpm playwright test`, not Jest.
-  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/tests/e2e/'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/tests/e2e/', '/.claude/worktrees/'],
   // setupFilesAfterEnv runs after the test framework is installed in the environment,
   // so expect.extend() calls in @testing-library/jest-dom can find the global expect.
   // (setupFiles runs before the framework; @testing-library/jest-dom needs expect to exist.)

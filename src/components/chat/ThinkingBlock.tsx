@@ -55,7 +55,13 @@ export function ThinkingBlock({ text, isThinking, durationMs }: ThinkingBlockPro
   // This avoids an empty disclosure element appearing on non-thinking messages.
   if (!isThinking && !text) return null;
 
-  const label = isThinking ? 'Thinking…' : `Thought for ${Math.floor((durationMs ?? 0) / 1000)}s`;
+  // History-restored messages lack timing data (durationMs is null),
+  // so show bare "Thought" instead of the misleading "Thought for 0s".
+  const label = isThinking
+    ? 'Thinking…'
+    : durationMs !== null
+      ? `Thought for ${Math.floor(durationMs / 1000)}s`
+      : 'Thought';
 
   // Content is visible while streaming (so the user watches live) or when
   // the user has clicked to expand after completion.
