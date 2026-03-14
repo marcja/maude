@@ -76,43 +76,52 @@ export function InputArea({ isStreaming, onSubmit, onStop, onNewChat }: InputAre
   const isEmpty = value.trim().length === 0;
 
   return (
-    <div className="flex items-end gap-2 border-t border-gray-200 bg-white px-4 py-3">
-      {onNewChat != null && (
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="shrink-0 appearance-none rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-200"
-        >
-          New chat
-        </button>
-      )}
-      <textarea
-        ref={textareaRef}
-        className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        aria-label="Message input"
-        rows={1}
-      />
-      {isStreaming ? (
-        <button
-          type="button"
-          onClick={onStop}
-          className="shrink-0 rounded-xl bg-red-500 px-4 py-2 text-sm text-white transition-colors hover:bg-red-600"
-        >
-          Stop
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isEmpty}
-          className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="Send message"
-        >
-          Send
-        </button>
+    <div className="border-t border-gray-200 bg-white px-4 py-3">
+      <div className="flex items-end gap-2">
+        {onNewChat != null && (
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="hidden sm:block shrink-0 appearance-none rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          >
+            New chat
+          </button>
+        )}
+        <textarea
+          ref={textareaRef}
+          className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Send a message..."
+          aria-label="Message input"
+          rows={1}
+        />
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={onStop}
+            className="shrink-0 rounded-xl bg-red-500 px-4 py-2 text-sm text-white transition-colors hover:bg-red-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isEmpty}
+            className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            aria-label="Send message"
+          >
+            Send
+          </button>
+        )}
+      </div>
+      {/* Keyboard shortcut hint — hidden during streaming to avoid clutter */}
+      {!isStreaming && (
+        <p className="mt-1 text-center text-xs text-gray-400">
+          Enter to send, Shift+Enter for newline
+        </p>
       )}
     </div>
   );

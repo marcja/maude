@@ -275,6 +275,22 @@ page, full three-column layout with history pane on the left.
 
 ---
 
+## Known Issues
+
+- [ ] T30 — fix(settings-e2e): "saved values persist on reload" test failure
+      Symptom: `settings.spec.ts:46` fails — after `page.reload()` the MSW
+        handler re-registers with default (empty) state, so the GET returns
+        blanks even though the prior save succeeded within the same test run.
+      Root cause: MSW service worker state does not survive page reloads.
+        The test calls `useMSWHandler(page, 'settings')` after reload, which
+        resets the in-memory store to empty defaults.
+      Fix options: (a) persist MSW handler state across reloads via a shared
+        variable outside the handler closure, or (b) restructure the test to
+        use the real SQLite-backed API route instead of MSW for this specific
+        persistence assertion.
+
+---
+
 ## Future Considerations (post-Phase 4)
 
 The following are deliberately out of scope for the current build plan. They

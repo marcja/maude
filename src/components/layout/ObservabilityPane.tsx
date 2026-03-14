@@ -187,11 +187,12 @@ export function ObservabilityPane({ collapsed, onToggle }: ObservabilityPaneProp
 
   // -- Collapsed strip: 32px wide with vertical "Debug" label ----------------
   // Entire strip is clickable for discoverability — clicking anywhere expands.
+  // Hidden on mobile — the gear button in the header controls the overlay.
   if (collapsed) {
     return (
       <button
         type="button"
-        className="flex h-full w-8 cursor-pointer flex-col items-center border-l border-gray-200 bg-gray-50"
+        className="hidden sm:flex h-full w-8 cursor-pointer flex-col items-center border-l border-gray-200 bg-gray-50"
         onClick={onToggle}
         aria-label="Expand debug pane"
       >
@@ -202,41 +203,54 @@ export function ObservabilityPane({ collapsed, onToggle }: ObservabilityPaneProp
     );
   }
 
-  // -- Expanded pane: 300px fixed width --------------------------------------
+  // -- Expanded pane: overlay on mobile, side-by-side at sm: and above --------
   return (
-    <div className="flex h-full w-[300px] flex-col border-l border-gray-200 bg-white">
-      {/* Header — no internal collapse button; gear in chat header controls toggle */}
-      <div className="flex items-center border-b border-gray-200 px-3 py-1.5">
-        <span className="text-xs font-semibold text-gray-700">Debug</span>
-      </div>
+    <>
+      {/* Backdrop — mobile only. Tap to dismiss the overlay. */}
+      <div
+        className="fixed inset-0 z-40 bg-black/30 sm:hidden"
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onToggle();
+        }}
+        role="button"
+        tabIndex={-1}
+        aria-label="Close debug pane"
+      />
+      <div className="fixed inset-y-0 right-0 z-50 sm:relative sm:z-auto flex h-full w-[300px] flex-col border-l border-gray-200 bg-white transition-transform duration-200 sm:transition-all sm:duration-200 sm:ease-out">
+        {/* Header — no internal collapse button; gear in chat header controls toggle */}
+        <div className="flex items-center border-b border-gray-200 px-3 py-1.5">
+          <span className="text-xs font-semibold text-gray-700">Debug</span>
+        </div>
 
-      {/* Tab bar */}
-      <div className="flex border-b border-gray-200" role="tablist">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            className={`flex-1 px-2 py-1.5 text-xs font-medium ${
-              activeTab === tab.id
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+        {/* Tab bar */}
+        <div className="flex border-b border-gray-200" role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`flex-1 px-2 py-1.5 text-xs font-medium ${
+                activeTab === tab.id
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Tab panels */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {activeTab === 'metrics' && <MetricsPanel requests={state.requests} />}
-        {activeTab === 'events' && <EventsPanel events={state.events} />}
-        {activeTab === 'prompt' && <SystemPromptPanel prompt={state.systemPrompt} />}
+        {/* Tab panels */}
+        <div className="flex-1 overflow-y-auto p-2">
+          {activeTab === 'metrics' && <MetricsPanel requests={state.requests} />}
+          {activeTab === 'events' && <EventsPanel events={state.events} />}
+          {activeTab === 'prompt' && <SystemPromptPanel prompt={state.systemPrompt} />}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

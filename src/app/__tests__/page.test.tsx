@@ -25,7 +25,7 @@ describe('WelcomePage — content', () => {
   it('displays a one-line description', () => {
     render(<WelcomePage />);
     // The description should convey what Maude is — a local AI chat app
-    expect(screen.getByText(/local/i)).toBeInTheDocument();
+    expect(screen.getByText(/local AI chat assistant/i)).toBeInTheDocument();
   });
 
   it('indicates the private/local nature of the app', () => {

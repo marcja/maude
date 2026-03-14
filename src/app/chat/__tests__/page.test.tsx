@@ -283,8 +283,8 @@ describe('ChatPage — handleNewChat', () => {
     await submitMessage(user, 'Hello');
     await waitFor(() => expect(screen.getByText('Hello world')).toBeInTheDocument());
 
-    // Click New Chat via the InputArea button
-    await user.click(screen.getByRole('button', { name: /new chat/i }));
+    // Click "+ New chat" via the header button (InputArea's New chat is hidden on mobile)
+    await user.click(screen.getByRole('button', { name: /\+ new chat/i }));
 
     // History should be cleared — assistant message gone
     await waitFor(() => {

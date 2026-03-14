@@ -13,7 +13,7 @@ import Link from 'next/link';
 
 export default function WelcomePage() {
   return (
-    <main className="flex h-screen flex-col items-center justify-center px-4">
+    <main className="flex h-screen flex-col items-center justify-center bg-gradient-to-b from-blue-50 to-white px-4">
       <h1 className="text-4xl font-bold text-gray-900">Maude</h1>
       <p className="mt-3 text-lg text-gray-600">Your local AI chat assistant</p>
       <p className="mt-2 text-sm text-gray-400">
@@ -26,6 +26,12 @@ export default function WelcomePage() {
       >
         Start chatting
       </Link>
+
+      <ul className="mt-6 space-y-1 text-sm text-gray-500">
+        <li>Powered by Ollama</li>
+        <li>Conversations stored locally</li>
+        <li>Full observability</li>
+      </ul>
 
       <Link
         href="/settings"

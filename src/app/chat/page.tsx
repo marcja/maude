@@ -245,29 +245,63 @@ export default function ChatPage() {
 
       {/* Center column — chat UI */}
       <div className="chat-page flex flex-1 min-w-0 flex-col">
-        {/* Header bar with navigation links and gear toggle for debug pane */}
+        {/* Header bar with navigation, new chat, and gear toggle for debug pane */}
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-1">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
+            {/* Mobile-only hamburger to open history pane */}
+            <button
+              type="button"
+              aria-label="Open history"
+              className="sm:hidden p-1 text-gray-400 hover:text-gray-600"
+              onClick={() => setHistoryExpanded(true)}
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
+                <title>Menu</title>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <Link href="/" className="text-sm font-semibold text-gray-900 hover:text-gray-600">
               Maude
             </Link>
             <Link href="/settings" className="text-sm text-gray-400 hover:text-gray-600">
               Settings
             </Link>
           </div>
-          <button
-            type="button"
-            aria-label="Toggle debug pane"
-            className={`p-1 text-lg transition-colors ${paneExpanded ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-            onClick={() => setPaneExpanded((prev) => !prev)}
-          >
-            ⚙
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="rounded-lg px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50"
+            >
+              + New chat
+            </button>
+            <button
+              type="button"
+              aria-label="Toggle debug pane"
+              className={`p-1 text-lg transition-colors ${paneExpanded ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+              onClick={() => setPaneExpanded((prev) => !prev)}
+            >
+              ⚙
+            </button>
+          </div>
         </div>
 
         {/* Chat content area — max-w-3xl keeps readable line lengths centered */}
         <div className="relative flex flex-1 min-w-0 flex-col max-w-3xl mx-auto w-full">
-          <MessageList listRef={listRef} onScroll={handleScroll}>
+          <MessageList
+            listRef={listRef}
+            onScroll={handleScroll}
+            messageCount={history.length}
+            isStreaming={isStreaming}
+            onSuggestionClick={handleSubmit}
+          >
             {history.map((m) => (
               <Fragment key={m.id}>
                 {m.role === 'assistant' && m.thinkingText && (

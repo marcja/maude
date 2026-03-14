@@ -21,6 +21,7 @@
  *   input, not Markdown).
  */
 
+import { useState } from 'react';
 import { StreamingMarkdown } from './StreamingMarkdown';
 
 interface MessageItemProps {
@@ -36,14 +37,51 @@ interface MessageItemProps {
   onCopy?: () => void;
 }
 
-// Named constants keep the JSX ternary readable and make it easy to find all
-// styling for a given bubble variant in one place.
+// B2: w-fit makes user bubbles content-width instead of stretching to max-w.
 const USER_BUBBLE =
   'rounded-2xl rounded-br-sm bg-blue-600 px-4 py-2 text-white whitespace-pre-wrap';
-// min-h-[2.5rem]: prevents the bubble from collapsing to near-zero height
-// while content is empty at the start of a stream.
-const ASSISTANT_BUBBLE =
-  'rounded-2xl rounded-bl-sm bg-gray-100 px-4 py-2 text-gray-900 whitespace-pre-wrap min-h-[2.5rem]';
+// B3: Flat assistant messages — no background, no rounded corners. Subtle
+// top padding separates turns visually without a bubble.
+// min-h-[2.5rem]: prevents collapse during empty-content stream start.
+const ASSISTANT_BUBBLE = 'px-1 py-2 text-gray-900 whitespace-pre-wrap min-h-[2.5rem]';
+
+/** Inline clipboard SVG icon (16×16). */
+function ClipboardIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <title>Copy</title>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-2M8 5a2 2 0 012-2h4a2 2 0 012 2M8 5a2 2 0 002 2h4a2 2 0 002-2"
+      />
+    </svg>
+  );
+}
+
+/** Inline checkmark SVG icon (16×16). */
+function CheckIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <title>Copied</title>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
 
 export function MessageItem({
   sender,
@@ -53,8 +91,20 @@ export function MessageItem({
   onCopy,
 }: MessageItemProps) {
   const isUser = sender === 'user';
+  // B4: transient "Copied!" confirmation — resets after 2s.
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(content);
+    onCopy?.();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <article className={`mb-3 max-w-2xl ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+    // B2: max-w-[80%] w-fit keeps user bubbles content-sized.
+    // `group` enables B4 hover-only copy button.
+    <article className={`group mb-3 ${isUser ? 'ml-auto max-w-[80%] w-fit' : 'mr-auto max-w-2xl'}`}>
       {isUser ? (
         <p className={USER_BUBBLE}>{content}</p>
       ) : (
@@ -65,18 +115,14 @@ export function MessageItem({
       {!isUser && (
         <footer className="mt-1 flex items-center gap-2 text-xs text-gray-400">
           {ttft != null && <span className="font-mono">↯ {Math.round(ttft)}ms</span>}
+          {/* B4: hover-only copy button with transient feedback */}
           <button
             type="button"
-            className="cursor-pointer transition-colors hover:text-gray-600"
+            className="cursor-pointer opacity-0 transition-opacity group-hover:opacity-100 hover:text-gray-600"
             aria-label="Copy response"
-            onClick={() => {
-              // Fire-and-forget: no UI feedback in T07; a future task adds
-              // a transient "Copied!" confirmation state.
-              void navigator.clipboard.writeText(content);
-              onCopy?.();
-            }}
+            onClick={handleCopy}
           >
-            Copy
+            {copied ? <CheckIcon /> : <ClipboardIcon />}
           </button>
           {isStreaming && (
             <span

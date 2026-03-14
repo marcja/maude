@@ -164,7 +164,7 @@ export function HistoryPane({
     return (
       <button
         type="button"
-        className="flex h-full w-8 cursor-pointer flex-col items-center border-r border-gray-200 bg-gray-50"
+        className="hidden sm:flex h-full w-8 cursor-pointer flex-col items-center border-r border-gray-200 bg-gray-50"
         onClick={onToggle}
         aria-label="Expand history pane"
       >
@@ -175,54 +175,109 @@ export function HistoryPane({
     );
   }
 
-  // -- Expanded pane: 280px fixed width ---------------------------------------
+  // -- Expanded pane: overlay on mobile, side-by-side at sm: and above --------
   return (
-    <div className="flex h-full w-[280px] flex-col border-r border-gray-200 bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-1.5">
-        <button
-          type="button"
-          aria-label="Collapse history pane"
-          className="text-xs font-semibold text-gray-700 hover:text-gray-500"
-          onClick={onToggle}
-        >
-          History
-        </button>
-        <button
-          type="button"
-          className="rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
-          onClick={onNewChat}
-        >
-          New Chat
-        </button>
+    <>
+      {/* Backdrop — mobile only. Tap to dismiss the overlay. */}
+      <div
+        className="fixed inset-0 z-40 bg-black/30 sm:hidden"
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onToggle();
+        }}
+        role="button"
+        tabIndex={-1}
+        aria-label="Close history pane"
+      />
+      <div className="fixed inset-y-0 left-0 z-50 sm:relative sm:z-auto flex h-full w-[280px] flex-col border-r border-gray-200 bg-white transition-transform duration-200 sm:transition-all sm:duration-200 sm:ease-out">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-200 px-3 py-1.5">
+          <button
+            type="button"
+            aria-label="Collapse history pane"
+            className="text-xs font-semibold text-gray-700 hover:text-gray-500"
+            onClick={onToggle}
+          >
+            History
+          </button>
+          <button
+            type="button"
+            className="rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+            onClick={onNewChat}
+          >
+            New Chat
+          </button>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-y-auto">
+          {loading && <p className="py-4 text-center text-xs text-gray-400">Loading…</p>}
+
+          {error && <p className="py-4 text-center text-xs text-red-500">{error}</p>}
+
+          {!loading && !error && conversations.length === 0 && (
+            <p className="py-4 text-center text-xs text-gray-400">No conversations yet</p>
+          )}
+
+          {!loading && !error && conversations.length > 0 && (
+            <div className="flex flex-col">
+              {groupByDate(conversations).map(({ group, items }) => (
+                <div key={group}>
+                  <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    {group}
+                  </div>
+                  {items.map((conv) => (
+                    <ConversationItem
+                      key={conv.id}
+                      conversation={conv}
+                      isActive={conv.id === activeConversationId}
+                      onSelect={handleSelect}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* Content area */}
-      <div className="flex-1 overflow-y-auto">
-        {loading && <p className="py-4 text-center text-xs text-gray-400">Loading…</p>}
-
-        {error && <p className="py-4 text-center text-xs text-red-500">{error}</p>}
-
-        {!loading && !error && conversations.length === 0 && (
-          <p className="py-4 text-center text-xs text-gray-400">No conversations yet</p>
-        )}
-
-        {!loading && !error && conversations.length > 0 && (
-          <div className="flex flex-col">
-            {conversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isActive={conv.id === activeConversationId}
-                onSelect={handleSelect}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Date grouping helpers
+// ---------------------------------------------------------------------------
+
+type DateGroup = 'Today' | 'Yesterday' | 'Last week' | 'Older';
+
+/** Assign a conversation to a date group based on its updated_at timestamp. */
+function getDateGroup(ts: number): DateGroup {
+  const now = new Date();
+  const date = new Date(ts);
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return 'Last week';
+  return 'Older';
+}
+
+/** Group conversations by date bucket, preserving order within each group. */
+function groupByDate(conversations: Conversation[]): { group: DateGroup; items: Conversation[] }[] {
+  const order: DateGroup[] = ['Today', 'Yesterday', 'Last week', 'Older'];
+  const buckets: Record<DateGroup, Conversation[]> = {
+    Today: [],
+    Yesterday: [],
+    'Last week': [],
+    Older: [],
+  };
+  for (const conv of conversations) {
+    const group = getDateGroup(conv.updated_at);
+    buckets[group].push(conv);
+  }
+  return order.filter((g) => buckets[g].length > 0).map((g) => ({ group: g, items: buckets[g] }));
 }
 
 // ---------------------------------------------------------------------------

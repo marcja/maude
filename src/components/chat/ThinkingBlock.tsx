@@ -57,6 +57,7 @@ export function ThinkingBlock({ text, isThinking, durationMs }: ThinkingBlockPro
 
   // History-restored messages lack timing data (durationMs is null),
   // so show bare "Thought" instead of the misleading "Thought for 0s".
+  // C1: "Thinking..." pulses during active thinking; "Thought for Xs" on completion.
   const label = isThinking
     ? 'Thinking…'
     : durationMs !== null
@@ -85,7 +86,7 @@ export function ThinkingBlock({ text, isThinking, durationMs }: ThinkingBlockPro
         >
           ›
         </span>
-        <span>{label}</span>
+        <span className={isThinking ? 'animate-pulse' : ''}>{label}</span>
       </button>
 
       {contentVisible && (

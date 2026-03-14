@@ -38,7 +38,8 @@ test('observability pane: two conversations, metrics cards, events, copy event',
   await expect(page.getByRole('button', { name: 'Stop' })).not.toBeVisible({ timeout: 3000 });
 
   // Start a new chat and send a second message.
-  await page.getByRole('button', { name: 'New chat' }).click();
+  // Header has "+ New chat"; InputArea has "New chat" — use the header button.
+  await page.getByRole('button', { name: '+ New chat' }).click();
   await page.fill('[aria-label="Message input"]', 'Hi again');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Hello world')).toBeVisible({ timeout: 5000 });
