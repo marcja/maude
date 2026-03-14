@@ -1,18 +1,25 @@
 /**
  * tests/e2e/settings.spec.ts
  *
- * Playwright E2E tests for the Settings page (T24).
+ * Playwright E2E tests for the Settings page.
  *
- * Tests:
- *   1. Load settings → edit → save → success feedback shown
- *   2. Saved values persist on reload (MSW handlers use in-memory state)
- *   3. Navigation: "Back to chat" link works
+ * The settings page is a server component that reads directly from SQLite,
+ * so MSW cannot intercept the initial load. These tests work with the real
+ * database, resetting settings to empty before each test via POST /api/settings.
  */
 
-import { expect, resetMSWHandlers, test, useMSWHandler } from './fixtures';
+import { expect, test } from './fixtures';
 
-test.afterEach(async ({ page }) => {
-  await resetMSWHandlers(page);
+// Tests share a real SQLite database, so they must run serially to avoid
+// cross-test pollution (e.g. Test 1's save leaking into Test 2's reload).
+test.describe.configure({ mode: 'serial' });
+
+// Reset settings to empty before each test so tests start with clean state.
+// Uses the real POST /api/settings endpoint (no MSW interception).
+test.beforeEach(async ({ request }) => {
+  await request.post('/api/settings', {
+    data: { name: '', personalizationPrompt: '' },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -21,9 +28,8 @@ test.afterEach(async ({ page }) => {
 
 test('settings: load, edit, save, and see success feedback', async ({ page }) => {
   await page.goto('/settings');
-  await useMSWHandler(page, 'settings');
 
-  // Wait for form to load (name input visible and empty by default)
+  // Form loads immediately from server component — fields start empty
   const nameInput = page.getByLabel(/name/i);
   await expect(nameInput).toBeVisible({ timeout: 5000 });
   await expect(nameInput).toHaveValue('');
@@ -45,7 +51,6 @@ test('settings: load, edit, save, and see success feedback', async ({ page }) =>
 
 test('settings: saved values persist on reload', async ({ page }) => {
   await page.goto('/settings');
-  await useMSWHandler(page, 'settings');
 
   // Wait for form to load
   const nameInput = page.getByLabel(/name/i);
@@ -65,10 +70,9 @@ test('settings: saved values persist on reload', async ({ page }) => {
   await expect(page.getByLabel(/name/i)).toHaveValue('Diana');
   await expect(page.getByLabel(/personalization/i)).toHaveValue('Always explain your reasoning');
 
-  // Reload the page — MSW handlers retain in-memory state so the saved
-  // values should be returned by the GET request on mount.
+  // Reload the page — server component reads from SQLite, which now has
+  // the saved values from the POST above.
   await page.reload();
-  await useMSWHandler(page, 'settings');
 
   // Verify the saved values are still present
   await expect(page.getByLabel(/name/i)).toHaveValue('Diana', { timeout: 5000 });
@@ -81,7 +85,6 @@ test('settings: saved values persist on reload', async ({ page }) => {
 
 test('settings: "Back to chat" link navigates to /chat', async ({ page }) => {
   await page.goto('/settings');
-  await useMSWHandler(page, 'settings');
 
   // Wait for page to load
   await expect(page.getByLabel(/name/i)).toBeVisible({ timeout: 5000 });

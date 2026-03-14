@@ -39,8 +39,8 @@ describe('shared types — single source of truth', () => {
     expect(source).not.toMatch(/^export interface MessageRow\b/m);
   });
 
-  it('settings/page.tsx imports Settings from shared types', () => {
-    const source = readSrc('src/app/settings/page.tsx');
+  it('SettingsForm.tsx imports Settings from shared types', () => {
+    const source = readSrc('src/components/settings/SettingsForm.tsx');
     expect(source).toMatch(/from ['"].*shared\/types['"]/);
     // No local Settings interface
     expect(source).not.toMatch(/^interface Settings\b/m);

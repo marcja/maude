@@ -296,7 +296,7 @@ list server-side. Streaming core remains correctly client-side.
       Test: type-check passes; no duplicate interface definitions remain;
         existing tests still pass
 
-- [ ] T33 — Settings page server component conversion
+- [x] T33 — Settings page server component conversion
       User value: settings page loads instantly — no mount-time waterfall,
         no loading spinner, no load error state
       Deliverable: `settings/page.tsx` becomes server component;
@@ -319,17 +319,14 @@ list server-side. Streaming core remains correctly client-side.
 
 ## Known Issues
 
-- [ ] T30 — fix(settings-e2e): "saved values persist on reload" test failure
+- [x] T30 — fix(settings-e2e): "saved values persist on reload" test failure
       Symptom: `settings.spec.ts:46` fails — after `page.reload()` the MSW
         handler re-registers with default (empty) state, so the GET returns
         blanks even though the prior save succeeded within the same test run.
       Root cause: MSW service worker state does not survive page reloads.
-        The test calls `useMSWHandler(page, 'settings')` after reload, which
-        resets the in-memory store to empty defaults.
-      Fix options: (a) persist MSW handler state across reloads via a shared
-        variable outside the handler closure, or (b) restructure the test to
-        use the real SQLite-backed API route instead of MSW for this specific
-        persistence assertion.
+      Resolution: T33 converted settings page to a server component that reads
+        directly from SQLite. E2E tests now use the real database (option b),
+        with serial execution and beforeEach reset via POST /api/settings.
 
 ---
 

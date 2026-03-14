@@ -1,18 +1,17 @@
 /**
- * src/app/settings/__tests__/page.test.tsx
+ * src/components/settings/__tests__/SettingsForm.test.tsx
  *
- * Tests for the Settings page component. Uses fetch mocking (not MSW) because
- * the component runs in jsdom where MSW's service worker is unavailable.
- * The component fetches from /api/settings on mount and POSTs on save via
- * React 19's useActionState (form action prop + FormData).
+ * Tests for the SettingsForm client component. Unlike the old page tests,
+ * these render SettingsForm directly with prop-based initial data — no
+ * mount-time fetch, no loading state, no load error state.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import SettingsPage from '../page';
+import SettingsForm from '../SettingsForm';
 
 // ---------------------------------------------------------------------------
-// Fetch mock helpers
+// Fetch mock helpers — only needed for save (POST), not load (GET)
 // ---------------------------------------------------------------------------
 
 function mockFetchResponse(body: unknown, status = 200) {
@@ -23,8 +22,6 @@ function mockFetchResponse(body: unknown, status = 200) {
   } as Response);
 }
 
-// jsdom does not provide a global fetch, so we install a jest.fn() on
-// globalThis and restore the original value (undefined) after each test.
 const originalFetch = globalThis.fetch;
 let fetchMock: jest.Mock;
 
@@ -38,42 +35,24 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 1: Loading settings from API
+// Suite 1: Rendering with prop-based initial data
 // ---------------------------------------------------------------------------
 
-describe('SettingsPage — loading', () => {
-  it('fetches settings on mount and populates form fields', async () => {
-    fetchMock.mockReturnValueOnce(
-      mockFetchResponse({ name: 'Alice', personalizationPrompt: 'Be concise' })
+describe('SettingsForm — rendering', () => {
+  it('renders with prop-based initial data immediately (no loading state)', () => {
+    render(
+      <SettingsForm initialSettings={{ name: 'Alice', personalizationPrompt: 'Be concise' }} />
     );
 
-    render(<SettingsPage />);
-
-    // Wait for the fetch to resolve and fields to populate (uncontrolled
-    // inputs with defaultValue — rendered after the mount-time fetch resolves)
-    await waitFor(() => {
-      expect(screen.getByLabelText(/name/i)).toHaveValue('Alice');
-    });
+    // Fields populated immediately — no waitFor needed
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Alice');
     expect(screen.getByLabelText(/personalization/i)).toHaveValue('Be concise');
   });
 
-  it('shows a loading state while fetching', () => {
-    // Never-resolving promise to keep the loading state visible
-    fetchMock.mockReturnValueOnce(new Promise(() => {}));
+  it('has no loading spinner or loading text', () => {
+    render(<SettingsForm initialSettings={{ name: '', personalizationPrompt: '' }} />);
 
-    render(<SettingsPage />);
-
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
-  });
-
-  it('shows an error message when fetch fails', async () => {
-    fetchMock.mockReturnValueOnce(mockFetchResponse({ error: 'Server error' }, 500));
-
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
   });
 });
 
@@ -81,21 +60,13 @@ describe('SettingsPage — loading', () => {
 // Suite 2: Saving settings
 // ---------------------------------------------------------------------------
 
-describe('SettingsPage — saving', () => {
+describe('SettingsForm — saving', () => {
   it('POSTs updated settings and shows success feedback', async () => {
     const user = userEvent.setup();
 
-    // Initial GET
-    fetchMock.mockReturnValueOnce(mockFetchResponse({ name: '', personalizationPrompt: '' }));
+    render(<SettingsForm initialSettings={{ name: '', personalizationPrompt: '' }} />);
 
-    render(<SettingsPage />);
-
-    // Wait for form to load
-    await waitFor(() => {
-      expect(screen.getByLabelText(/name/i)).toHaveValue('');
-    });
-
-    // Fill in fields
+    // Fields are immediately available — no waitFor
     await user.type(screen.getByLabelText(/name/i), 'Bob');
     await user.type(screen.getByLabelText(/personalization/i), 'Be helpful');
 
@@ -104,7 +75,6 @@ describe('SettingsPage — saving', () => {
       mockFetchResponse({ name: 'Bob', personalizationPrompt: 'Be helpful' })
     );
 
-    // Click save
     await user.click(screen.getByRole('button', { name: /save/i }));
 
     // useActionState runs the action in a transition — wait for the POST
@@ -121,9 +91,7 @@ describe('SettingsPage — saving', () => {
       expect(screen.getByText(/settings saved/i)).toBeInTheDocument();
     });
 
-    // Form fields must retain the saved values after React 19's form reset.
-    // React 19 resets uncontrolled inputs to their defaultValue after a form
-    // action completes — so loadedSettings must be updated to match.
+    // Form fields retain saved values after React 19's form reset
     expect(screen.getByLabelText(/name/i)).toHaveValue('Bob');
     expect(screen.getByLabelText(/personalization/i)).toHaveValue('Be helpful');
   });
@@ -131,14 +99,7 @@ describe('SettingsPage — saving', () => {
   it('shows error feedback when save fails', async () => {
     const user = userEvent.setup();
 
-    // Initial GET
-    fetchMock.mockReturnValueOnce(mockFetchResponse({ name: 'Alice', personalizationPrompt: '' }));
-
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/name/i)).toHaveValue('Alice');
-    });
+    render(<SettingsForm initialSettings={{ name: 'Alice', personalizationPrompt: '' }} />);
 
     // Mock a failed POST
     fetchMock.mockReturnValueOnce(mockFetchResponse({ error: 'Validation failed' }, 400));
@@ -155,14 +116,11 @@ describe('SettingsPage — saving', () => {
 // Suite 3: Navigation
 // ---------------------------------------------------------------------------
 
-describe('SettingsPage — navigation', () => {
-  it('has a link back to the chat page', async () => {
-    fetchMock.mockReturnValueOnce(mockFetchResponse({ name: '', personalizationPrompt: '' }));
+describe('SettingsForm — navigation', () => {
+  it('has a link back to the chat page', () => {
+    render(<SettingsForm initialSettings={{ name: '', personalizationPrompt: '' }} />);
 
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /chat/i })).toHaveAttribute('href', '/chat');
-    });
+    // Link is immediately available — no waitFor needed
+    expect(screen.getByRole('link', { name: /chat/i })).toHaveAttribute('href', '/chat');
   });
 });
