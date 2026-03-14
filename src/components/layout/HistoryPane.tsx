@@ -59,6 +59,9 @@ interface HistoryPaneProps {
   onNewChat: () => void;
   /** ID of the currently active conversation (highlighted in the list). */
   activeConversationId: string | null;
+  /** Incremented by the parent after each completed stream to trigger a
+   *  re-fetch of the conversation list (B2: history pane refresh). */
+  refreshToken?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +91,7 @@ export function HistoryPane({
   onSelectConversation,
   onNewChat,
   activeConversationId,
+  refreshToken,
 }: HistoryPaneProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -122,6 +126,15 @@ export function HistoryPane({
     fetchConversations(controller.signal);
     return () => controller.abort();
   }, [collapsed, fetchConversations]);
+
+  // Re-fetch conversation list when the parent signals a refresh (e.g.,
+  // after a stream completes and a new conversation is persisted server-side).
+  useEffect(() => {
+    if (collapsed) return;
+    // Skip the initial mount — the effect above already handles that.
+    if (refreshToken === undefined || refreshToken === 0) return;
+    fetchConversations();
+  }, [refreshToken, collapsed, fetchConversations]);
 
   // Stable ref for onSelectConversation so useCallback doesn't churn.
   const onSelectRef = useRef(onSelectConversation);

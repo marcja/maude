@@ -269,3 +269,50 @@ describe('HistoryPane — error handling', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 7: refreshToken re-fetch (B2)
+// ---------------------------------------------------------------------------
+
+describe('HistoryPane — refreshToken', () => {
+  it('re-fetches conversations when refreshToken changes', async () => {
+    let fetchCount = 0;
+    server.use(
+      http.get('/api/conversations', () => {
+        fetchCount++;
+        return HttpResponse.json(FIXTURE_CONVERSATIONS);
+      })
+    );
+
+    const { rerender } = render(<HistoryPane {...defaultProps} refreshToken={0} />);
+
+    // Initial mount fetch
+    await waitFor(() => expect(fetchCount).toBe(1));
+
+    // Increment refreshToken → triggers re-fetch
+    rerender(<HistoryPane {...defaultProps} refreshToken={1} />);
+    await waitFor(() => expect(fetchCount).toBe(2));
+  });
+
+  it('does not re-fetch when collapsed and refreshToken changes', async () => {
+    let fetchCount = 0;
+    server.use(
+      http.get('/api/conversations', () => {
+        fetchCount++;
+        return HttpResponse.json(FIXTURE_CONVERSATIONS);
+      })
+    );
+
+    const { rerender } = render(<HistoryPane {...defaultProps} collapsed refreshToken={0} />);
+
+    // Collapsed — no initial fetch
+    expect(fetchCount).toBe(0);
+
+    // Increment refreshToken while collapsed — still no fetch
+    rerender(<HistoryPane {...defaultProps} collapsed refreshToken={1} />);
+
+    // Give a tick for any potential async effects
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchCount).toBe(0);
+  });
+});
