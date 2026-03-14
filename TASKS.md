@@ -236,7 +236,7 @@ page, full three-column layout with history pane on the left.
       Test: loads settings from API; save writes to DB; success feedback shown;
         saved values persist on reload
 
-- [ ] T25 — Welcome page
+- [x] T25 — Welcome page
       User value: proper entry point; onboarding for new users
       Deliverable: `src/app/page.tsx`
       Test: "Start chatting" navigates to /chat; settings link navigates to /settings
