@@ -51,6 +51,7 @@
  *   Finalized thinking data stored in history for re-display on scroll-back.
  */
 
+import Link from 'next/link';
 import { Fragment, useRef, useState } from 'react';
 import { InputArea } from '../../components/chat/InputArea';
 import { MessageItem } from '../../components/chat/MessageItem';
@@ -92,6 +93,10 @@ export default function ChatPage() {
 
   // Active conversation ID — highlighted in the history pane list.
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
+  // Incremented after each completed stream so HistoryPane re-fetches and
+  // shows newly persisted conversations without a full page refresh (B2).
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
 
   // Debug pane: ⚙ button toggles between expanded (300px) and collapsed (32px strip).
   // Single toggle level — no separate "hidden" vs "collapsed" states.
@@ -173,6 +178,9 @@ export default function ChatPage() {
     if (cid) {
       setActiveConversationId(cid);
     }
+    // Signal HistoryPane to re-fetch regardless of whether the assistant
+    // produced tokens — the conversation was still persisted server-side.
+    setHistoryRefreshToken((prev) => prev + 1);
   };
 
   const handleSubmit = (text: string) => {
@@ -232,12 +240,21 @@ export default function ChatPage() {
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
         activeConversationId={activeConversationId}
+        refreshToken={historyRefreshToken}
       />
 
       {/* Center column — chat UI */}
       <div className="chat-page flex flex-1 min-w-0 flex-col">
-        {/* Header bar with gear toggle for debug pane */}
-        <div className="flex items-center justify-end border-b border-gray-200 px-4 py-1">
+        {/* Header bar with navigation links and gear toggle for debug pane */}
+        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-1">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
+              Maude
+            </Link>
+            <Link href="/settings" className="text-sm text-gray-400 hover:text-gray-600">
+              Settings
+            </Link>
+          </div>
           <button
             type="button"
             aria-label="Toggle debug pane"
