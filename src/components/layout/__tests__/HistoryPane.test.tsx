@@ -82,13 +82,14 @@ function renderPane(overrides: Partial<PaneProps> = {}) {
 // ---------------------------------------------------------------------------
 
 describe('HistoryPane — collapse/expand', () => {
-  it('shows 32px strip with vertical "History" label when collapsed', () => {
+  it('shows icon strip with sidebar navigation when collapsed', () => {
     server.use(emptyConversationsHandler);
     renderPane({ collapsed: true });
 
-    expect(screen.getByText('History')).toBeInTheDocument();
-    // No header or conversation list visible
-    expect(screen.queryByRole('button', { name: /new chat/i })).not.toBeInTheDocument();
+    // Collapsed sidebar shows icon buttons, not text labels
+    expect(screen.getByRole('navigation', { name: /sidebar/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /new chat/i })).toBeInTheDocument();
   });
 
   it('calls onToggle when collapsed strip is clicked', async () => {
@@ -97,16 +98,18 @@ describe('HistoryPane — collapse/expand', () => {
     const onToggle = jest.fn();
     renderPane({ collapsed: true, onToggle });
 
-    await user.click(screen.getByRole('button', { name: /expand/i }));
+    await user.click(screen.getByRole('button', { name: /expand sidebar/i }));
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it('renders expanded pane with header and "New Chat" button', async () => {
+  it('renders expanded pane with navigation and "New Chat" button', async () => {
     server.use(emptyConversationsHandler);
     renderPane({ collapsed: false });
 
-    expect(screen.getByText('History')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /new chat/i })).toBeInTheDocument();
+    // Expanded sidebar has icon+text nav items including New chat
+    expect(screen.getByRole('button', { name: /collapse sidebar/i })).toBeInTheDocument();
+    // Multiple "New chat" elements exist (icon button + text button); verify at least one
+    expect(screen.getAllByText('New chat').length).toBeGreaterThan(0);
   });
 });
 
@@ -181,7 +184,11 @@ describe('HistoryPane — interactions', () => {
 
     await waitFor(() => {
       expect(onSelectConversation).toHaveBeenCalledTimes(1);
-      expect(onSelectConversation).toHaveBeenCalledWith('conv-1', FIXTURE_MESSAGES);
+      expect(onSelectConversation).toHaveBeenCalledWith(
+        'conv-1',
+        FIXTURE_MESSAGES,
+        'First conversation'
+      );
     });
   });
 

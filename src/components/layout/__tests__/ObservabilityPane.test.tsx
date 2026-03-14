@@ -116,11 +116,11 @@ function renderWithState(
 // ---------------------------------------------------------------------------
 
 describe('ObservabilityPane — structure', () => {
-  it('renders three tab buttons: Metrics, Events, System Prompt', () => {
+  it('renders three tab buttons: Metrics, Events, Prompt', () => {
     renderWithState();
     expect(screen.getByRole('tab', { name: /metrics/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /events/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /system prompt/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /prompt/i })).toBeInTheDocument();
   });
 
   it('shows the Metrics panel by default', () => {
@@ -195,22 +195,19 @@ describe('ObservabilityPane — Metrics tab (with data)', () => {
     expect(cards).toHaveLength(2);
   });
 
-  it.each([
-    ['completed', 'bg-green-500'],
-    ['stalled', 'bg-amber-500'],
-    ['error', 'bg-red-500'],
-    ['cancelled', 'bg-gray-400'],
-    ['streaming', 'bg-blue-500'],
-  ] as const)('shows %s status with correct indicator color', (status, expectedClass) => {
-    renderWithState((ctx) => {
-      ctx.startRequest(makeRequest({ id: 'r1', status, timestamp: FIXED_TIMESTAMP }));
-    });
+  it.each(['completed', 'stalled', 'error', 'cancelled', 'streaming'] as const)(
+    'shows %s status with correct semantic data attribute',
+    (status) => {
+      renderWithState((ctx) => {
+        ctx.startRequest(makeRequest({ id: 'r1', status, timestamp: FIXED_TIMESTAMP }));
+      });
 
-    const card = screen.getByTestId('metrics-card');
-    const badge = within(card).getByTestId('status-dot');
-    expect(badge).toHaveClass(expectedClass);
-    expect(within(card).getByText(status)).toBeInTheDocument();
-  });
+      const card = screen.getByTestId('metrics-card');
+      const badge = within(card).getByTestId('status-dot');
+      expect(badge).toHaveAttribute('data-status', status);
+      expect(within(card).getByText(status)).toBeInTheDocument();
+    }
+  );
 
   it('shows formatted timestamp (HH:MM:SS)', () => {
     renderWithState((ctx) => {
@@ -343,12 +340,12 @@ describe('ObservabilityPane — Events tab (with data)', () => {
   });
 
   it.each([
-    ['message_sent', 'bg-blue-100', 'text-blue-800'],
-    ['stream_completed', 'bg-green-100', 'text-green-800'],
-    ['stream_stalled', 'bg-amber-100', 'text-amber-800'],
-    ['stream_error', 'bg-red-100', 'text-red-800'],
-    ['custom_unknown_event', 'bg-gray-100', 'text-gray-800'],
-  ])('applies correct badge color for %s events', async (eventType, bgClass, textClass) => {
+    'message_sent',
+    'stream_completed',
+    'stream_stalled',
+    'stream_error',
+    'custom_unknown_event',
+  ])('applies correct semantic data attribute for %s events', async (eventType) => {
     const user = userEvent.setup();
     renderWithState((ctx) => {
       ctx.addEvent({
@@ -361,7 +358,7 @@ describe('ObservabilityPane — Events tab (with data)', () => {
 
     await user.click(screen.getByRole('tab', { name: /events/i }));
     const badge = screen.getByTestId('event-type');
-    expect(badge).toHaveClass(bgClass, textClass);
+    expect(badge).toHaveAttribute('data-event-category', eventType);
   });
 
   it('renders multiple events newest-first', async () => {
@@ -400,7 +397,7 @@ describe('ObservabilityPane — System Prompt tab', () => {
     const user = userEvent.setup();
     renderWithState();
 
-    await user.click(screen.getByRole('tab', { name: /system prompt/i }));
+    await user.click(screen.getByRole('tab', { name: /prompt/i }));
     expect(screen.getByText(/no prompt yet/i)).toBeInTheDocument();
   });
 
@@ -412,7 +409,7 @@ describe('ObservabilityPane — System Prompt tab', () => {
       ctx.setSystemPrompt(prompt);
     });
 
-    await user.click(screen.getByRole('tab', { name: /system prompt/i }));
+    await user.click(screen.getByRole('tab', { name: /prompt/i }));
 
     const pre = screen.getByTestId('system-prompt-pre');
     expect(pre.tagName).toBe('PRE');
