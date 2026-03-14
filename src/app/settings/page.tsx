@@ -39,14 +39,7 @@
 import Link from 'next/link';
 import { useActionState, useEffect, useState } from 'react';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface Settings {
-  name: string;
-  personalizationPrompt: string;
-}
+import type { Settings } from '../../lib/shared/types';
 
 interface SaveResult {
   status: 'idle' | 'success' | 'error';

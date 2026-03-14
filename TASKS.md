@@ -287,7 +287,7 @@ list server-side. Streaming core remains correctly client-side.
       Deliverable: `docs/SERVER_COMPONENTS_AUDIT.md`
       Test: document exists and is consistent with SPEC.md and codebase state
 
-- [ ] T32 — Shared types extraction (`src/lib/shared/types.ts`)
+- [x] T32 — Shared types extraction (`src/lib/shared/types.ts`)
       User value: eliminates type duplication between server and client code;
         prerequisite for server component conversions
       Deliverable: `src/lib/shared/types.ts` with `Settings` and

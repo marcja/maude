@@ -19,30 +19,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
+import type { ConversationSummary, Message, Settings } from '../shared/types';
+
 // ---------------------------------------------------------------------------
-// Types
+// Re-exports — server consumers that already import these names keep working.
+// New code should import directly from '../shared/types'.
 // ---------------------------------------------------------------------------
 
-export interface UserSettings {
-  name: string;
-  personalizationPrompt: string;
-}
-
-export interface ConversationRow {
-  id: string;
-  title: string;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface MessageRow {
-  id: string;
-  conversation_id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  thinking: string | null;
-  created_at: number;
-}
+export type UserSettings = Settings;
+export type ConversationRow = ConversationSummary;
+export type MessageRow = Message;
 
 // ---------------------------------------------------------------------------
 // Database instance type — returned by createDatabase()

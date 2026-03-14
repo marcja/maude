@@ -12,8 +12,8 @@
  * - Fetches from /api/conversations on mount (when expanded). The API routes
  *   are created in T26; tests use MSW handlers to mock them.
  *
- * - Client-side types mirror the server's ConversationRow and MessageRow
- *   shapes. Cannot import from src/lib/server/db.ts (server-only boundary).
+ * - Types are imported from src/lib/shared/types.ts — the single source of
+ *   truth for domain types shared across the server-only and client boundaries.
  *
  * - Delete uses window.confirm() for simplicity — no custom modal needed
  *   for a pedagogical app.
@@ -24,25 +24,11 @@
 
 import { useEffect, useState } from 'react';
 
-// ---------------------------------------------------------------------------
-// Client-side types (mirror server shapes from db.ts)
-// ---------------------------------------------------------------------------
+import type { ConversationSummary, Message } from '../../lib/shared/types';
 
-interface Conversation {
-  id: string;
-  title: string;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface HistoryMessage {
-  id: string;
-  conversation_id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  thinking: string | null;
-  created_at: number;
-}
+// Re-export Message under the name consumers already depend on.
+// chat/page.tsx imports HistoryMessage from this module.
+export type HistoryMessage = Message;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -93,7 +79,7 @@ export function HistoryPane({
   activeConversationId,
   refreshToken,
 }: HistoryPaneProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,7 +96,7 @@ export function HistoryPane({
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
-      const data: Conversation[] = await res.json();
+      const data: ConversationSummary[] = await res.json();
       setConversations(data);
     } catch (err) {
       // Abort is not an error — the component is unmounting or collapsing.
@@ -265,9 +251,11 @@ function getDateGroup(ts: number): DateGroup {
 }
 
 /** Group conversations by date bucket, preserving order within each group. */
-function groupByDate(conversations: Conversation[]): { group: DateGroup; items: Conversation[] }[] {
+function groupByDate(
+  conversations: ConversationSummary[]
+): { group: DateGroup; items: ConversationSummary[] }[] {
   const order: DateGroup[] = ['Today', 'Yesterday', 'Last week', 'Older'];
-  const buckets: Record<DateGroup, Conversation[]> = {
+  const buckets: Record<DateGroup, ConversationSummary[]> = {
     Today: [],
     Yesterday: [],
     'Last week': [],
@@ -290,7 +278,7 @@ function ConversationItem({
   onSelect,
   onDelete,
 }: {
-  conversation: Conversation;
+  conversation: ConversationSummary;
   isActive: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
