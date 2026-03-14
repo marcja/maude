@@ -44,7 +44,11 @@ export const slowHandler = http.post('/api/chat', ({ request }) => {
       }
 
       bookend({ type: 'content_block_stop' });
-      bookend({ type: 'message_stop', usage: { input_tokens: 1, output_tokens: 100 } });
+      bookend({
+        type: 'message_stop',
+        conversation_id: 'slow-conv-id',
+        usage: { input_tokens: 1, output_tokens: 100 },
+      });
       controller.close();
     },
   });

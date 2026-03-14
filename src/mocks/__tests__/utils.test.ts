@@ -20,7 +20,11 @@ describe('encodeEvent', () => {
     { label: 'error', event: { type: 'error', error: { message: 'fail', code: 'bad' } } },
     {
       label: 'message_stop',
-      event: { type: 'message_stop', usage: { input_tokens: 1, output_tokens: 2 } },
+      event: {
+        type: 'message_stop',
+        conversation_id: 'test-conv',
+        usage: { input_tokens: 1, output_tokens: 2 },
+      },
     },
   ])('serialises $label with nested fields', ({ event }) => {
     expect(encodeEvent(event)).toBe(`data: ${JSON.stringify(event)}\n\n`);

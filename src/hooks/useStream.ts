@@ -71,6 +71,8 @@ export type OnStreamComplete = (result: {
   durationMs: number;
   /** Number of content_block_delta events received. */
   tokenCount: number;
+  /** Server-assigned conversation ID; null on abort (message_stop not received). */
+  conversationId: string | null;
 }) => void;
 
 /** Options for useStream. Allows injecting cross-cutting concerns (e.g.
@@ -124,6 +126,9 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
   const thinkingStartRef = useRef<number | null>(null);
   const tokenCountRef = useRef(0);
   const usageRef = useRef<{ input_tokens: number; output_tokens: number } | null>(null);
+  // Server-assigned conversation ID from message_stop; enables multi-turn
+  // persistence by passing it back on subsequent send() calls.
+  const conversationIdRef = useRef<string | null>(null);
 
   // Stable ref for onEvent so send() always sees the latest callback without
   // needing it as a closure dependency — avoids stale references. Synced in
@@ -159,6 +164,7 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
     thinkingStartRef.current = null;
     tokenCountRef.current = 0;
     usageRef.current = null;
+    conversationIdRef.current = null;
 
     // Build the onComplete result from accumulator refs.
     // durationMs is passed as a parameter because it's computed at call time.
@@ -170,6 +176,7 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
       usage: usageRef.current,
       durationMs,
       tokenCount: tokenCountRef.current,
+      conversationId: conversationIdRef.current,
     });
 
     // Record start time for TTFT calculation (wall-clock performance timer,
@@ -277,6 +284,7 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
           case 'message_stop':
             receivedStop = true;
             usageRef.current = event.usage;
+            conversationIdRef.current = event.conversation_id;
             setState((prev) => ({ ...prev, isStreaming: false }));
             // React 18 automatic batching: onComplete's setState calls batch
             // with the isStreaming: false update above into one render, so

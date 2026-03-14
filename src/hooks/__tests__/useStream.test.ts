@@ -550,7 +550,11 @@ describe('useStream — conversationId', () => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         const events: SSEEvent[] = [
           { type: 'message_start', message_id: 'capture-test' },
-          { type: 'message_stop', usage: { input_tokens: 1, output_tokens: 1 } },
+          {
+            type: 'message_stop',
+            conversation_id: 'capture-conv-id',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          },
         ];
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
@@ -593,6 +597,49 @@ describe('useStream — conversationId', () => {
     expect(getCapturedBody()).not.toBeNull();
     // When conversationId is omitted, the hook serializes it as null
     expect(getCapturedBody()?.conversationId).toBeNull();
+  });
+
+  it('passes conversationId from message_stop to onComplete callback', async () => {
+    const encoder = new TextEncoder();
+    const testConvId = 'conv-from-server-abc';
+    server.use(
+      http.post('/api/chat', () => {
+        const events: SSEEvent[] = [
+          { type: 'message_start', message_id: 'conv-id-test' },
+          { type: 'content_block_start' },
+          { type: 'content_block_delta', delta: { text: 'Hi' } },
+          { type: 'content_block_stop' },
+          {
+            type: 'message_stop',
+            conversation_id: testConvId,
+            usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        ];
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const event of events) {
+              controller.enqueue(encoder.encode(encodeEvent(event)));
+            }
+            controller.close();
+          },
+        });
+        return new HttpResponse(stream, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      })
+    );
+
+    const { result } = renderHook(() => useStream());
+    const onComplete = jest.fn();
+
+    act(() => {
+      void result.current.send([{ role: 'user', content: 'Hi' }], null, onComplete);
+    });
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalled());
+    // jest.fn() types mock.calls as any[][] — cast to the known callback shape
+    const callArg = onComplete.mock.calls[0][0] as Parameters<OnStreamComplete>[0];
+    expect(callArg.conversationId).toBe(testConvId);
   });
 });
 

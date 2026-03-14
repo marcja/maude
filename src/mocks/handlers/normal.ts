@@ -21,7 +21,11 @@ const events: SSEEvent[] = [
   { type: 'content_block_delta', delta: { text: 'Hello' } },
   { type: 'content_block_delta', delta: { text: ' world' } },
   { type: 'content_block_stop' },
-  { type: 'message_stop', usage: { input_tokens: 3, output_tokens: 2 } },
+  {
+    type: 'message_stop',
+    conversation_id: 'normal.ts-conv',
+    usage: { input_tokens: 3, output_tokens: 2 },
+  },
 ];
 
 export const normalHandler = createSyncHandler(events);

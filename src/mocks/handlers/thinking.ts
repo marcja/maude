@@ -20,7 +20,11 @@ const events: SSEEvent[] = [
   { type: 'content_block_start' },
   { type: 'content_block_delta', delta: { text: 'The answer is 42.' } },
   { type: 'content_block_stop' },
-  { type: 'message_stop', usage: { input_tokens: 5, output_tokens: 10 } },
+  {
+    type: 'message_stop',
+    conversation_id: 'thinking.ts-conv',
+    usage: { input_tokens: 5, output_tokens: 10 },
+  },
 ];
 
 export const thinkingHandler = createSyncHandler(events);

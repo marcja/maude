@@ -89,13 +89,14 @@ describe('parseSSEStream', () => {
     const body = makeStream([
       sseChunk(
         'data: {"type":"content_block_delta","delta":{"text":"t"}}',
-        'data: {"type":"message_stop","usage":{"input_tokens":5,"output_tokens":1}}'
+        'data: {"type":"message_stop","conversation_id":"test-conv","usage":{"input_tokens":5,"output_tokens":1}}'
       ),
     ]);
     const events = await collect(body);
     expect(events).toHaveLength(2);
     expect(events[1]).toEqual({
       type: 'message_stop',
+      conversation_id: 'test-conv',
       usage: { input_tokens: 5, output_tokens: 1 },
     });
   });
@@ -103,7 +104,7 @@ describe('parseSSEStream', () => {
   it('stops on [DONE] sentinel without yielding an extra event', async () => {
     const body = makeStream([
       sseChunk(
-        'data: {"type":"message_stop","usage":{"input_tokens":1,"output_tokens":1}}',
+        'data: {"type":"message_stop","conversation_id":"test-conv","usage":{"input_tokens":1,"output_tokens":1}}',
         'data: [DONE]'
       ),
     ]);

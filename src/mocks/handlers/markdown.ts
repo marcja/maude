@@ -18,7 +18,11 @@ const events: SSEEvent[] = [
   { type: 'content_block_delta', delta: { text: '```\n\n' } },
   { type: 'content_block_delta', delta: { text: 'Done.' } },
   { type: 'content_block_stop' },
-  { type: 'message_stop', usage: { input_tokens: 1, output_tokens: 6 } },
+  {
+    type: 'message_stop',
+    conversation_id: 'markdown.ts-conv',
+    usage: { input_tokens: 1, output_tokens: 6 },
+  },
 ];
 
 export const markdownHandler = createSyncHandler(events);

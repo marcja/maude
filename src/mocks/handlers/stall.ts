@@ -61,7 +61,11 @@ export const stallHandler = http.post('/api/chat', async ({ request }) => {
       }
 
       emit({ type: 'content_block_stop' });
-      emit({ type: 'message_stop', usage: { input_tokens: 1, output_tokens: 10 } });
+      emit({
+        type: 'message_stop',
+        conversation_id: 'stall-conv-id',
+        usage: { input_tokens: 1, output_tokens: 10 },
+      });
       controller.close();
     },
   });

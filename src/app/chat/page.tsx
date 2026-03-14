@@ -153,6 +153,7 @@ export default function ChatPage() {
     ttft: f,
     thinkingText: tt,
     thinkingDurationMs: td,
+    conversationId: cid,
   }: Parameters<OnStreamComplete>[0]) => {
     if (t) {
       setHistory((prev) => [
@@ -167,6 +168,11 @@ export default function ChatPage() {
         },
       ]);
     }
+    // Persist the server-assigned conversation ID so subsequent turns are
+    // appended to the same conversation rather than creating a new one.
+    if (cid) {
+      setActiveConversationId(cid);
+    }
   };
 
   const handleSubmit = (text: string) => {
@@ -179,7 +185,7 @@ export default function ChatPage() {
     resetSuspension();
     setHistory((prev) => [...prev, userMsg]);
 
-    send(nextContext, undefined, appendAssistant);
+    send(nextContext, activeConversationId, appendAssistant);
   };
 
   const handleRetry = () => {
@@ -187,7 +193,7 @@ export default function ChatPage() {
     // Re-send the same context that failed. The user message is already in
     // history from the original attempt, so onComplete only needs to append
     // the assistant reply — identical to a normal handleSubmit flow.
-    send(failedMessages, undefined, appendAssistant);
+    send(failedMessages, activeConversationId, appendAssistant);
   };
 
   // Handle selecting a conversation from the history pane — loads its

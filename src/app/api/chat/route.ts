@@ -18,7 +18,12 @@
 import { randomUUID } from 'node:crypto';
 import type { SSEEvent } from '../../../lib/client/events';
 import { ValidationError, jsonResponse } from '../../../lib/server/apiHelpers';
-import { createConversation, getSettings, insertMessage } from '../../../lib/server/db';
+import {
+  createConversation,
+  getSettings,
+  insertMessage,
+  updateConversation,
+} from '../../../lib/server/db';
 import { ModelAdapterError, streamCompletion } from '../../../lib/server/modelAdapter';
 import type { ChatMessage } from '../../../lib/server/modelAdapter';
 import { buildSystemPrompt } from '../../../lib/server/promptBuilder';
@@ -277,8 +282,10 @@ export async function POST(request: Request): Promise<Response> {
   // Conversation ID: use the incoming one (continuation) or mint a new one.
   const conversationId = incomingConversationId ?? randomUUID();
 
-  // First user message content: used for title generation and as the persisted user message body.
-  const firstUserContent = messages.find((m) => m.role === 'user')?.content ?? '';
+  // Last user message content: used as the persisted user message body for this turn.
+  // Reversed search ensures multi-turn conversations save the newest user input,
+  // not the opening message which was already persisted in a prior turn.
+  const lastUserContent = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
 
   // Push-based stream (start callback) rather than pull-based (pull callback):
   // the BFF re-emits tokens as fast as they arrive from the model adapter, so
@@ -321,15 +328,19 @@ export async function POST(request: Request): Promise<Response> {
         const { content: accumulatedContent, thinking: accumulatedThinking } = dispatcher.result();
         const now = Date.now();
         if (!incomingConversationId) {
-          const title = firstUserContent.slice(0, 50) || 'New conversation';
+          const title = lastUserContent.slice(0, 50) || 'New conversation';
           createConversation(conversationId, title, now);
+        } else {
+          // Existing conversation: bump updated_at so the history pane can
+          // sort by recency without re-reading all messages.
+          updateConversation(conversationId, { updated_at: now });
         }
         const msgBase = { conversation_id: conversationId, created_at: now };
         insertMessage({
           ...msgBase,
           id: randomUUID(),
           role: 'user',
-          content: firstUserContent,
+          content: lastUserContent,
           thinking: null,
         });
         insertMessage({
@@ -348,6 +359,7 @@ export async function POST(request: Request): Promise<Response> {
         controller.enqueue(
           encode({
             type: 'message_stop',
+            conversation_id: conversationId,
             usage: {
               input_tokens: usage?.promptTokens ?? 0,
               output_tokens: usage?.completionTokens ?? 0,

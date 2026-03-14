@@ -25,6 +25,9 @@ export type SSEEvent =
   | { type: 'content_block_stop' }
   | {
       type: 'message_stop';
+      // Server returns the conversation ID so the client can track and pass it
+      // back on subsequent turns — enables multi-turn conversation persistence.
+      conversation_id: string;
       usage: { input_tokens: number; output_tokens: number };
     }
   | { type: 'error'; error: { message: string; code: string } };

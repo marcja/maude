@@ -23,6 +23,7 @@ jest.mock('../../../../lib/server/db', () => ({
   getSettings: jest.fn(() => ({ name: '', personalizationPrompt: '' })),
   createConversation: jest.fn(),
   insertMessage: jest.fn(),
+  updateConversation: jest.fn(),
 }));
 
 // Mock the model adapter so no HTTP request is made to Ollama. streamCompletion
@@ -49,7 +50,12 @@ jest.mock('../../../../lib/server/modelAdapter', () => {
 // Imports after mocks are registered
 // ---------------------------------------------------------------------------
 
-import { createConversation, getSettings, insertMessage } from '../../../../lib/server/db';
+import {
+  createConversation,
+  getSettings,
+  insertMessage,
+  updateConversation,
+} from '../../../../lib/server/db';
 import { ModelAdapterError, streamCompletion } from '../../../../lib/server/modelAdapter';
 import { POST } from '../route';
 
@@ -57,6 +63,7 @@ const mockGetSettings = getSettings as jest.MockedFunction<typeof getSettings>;
 const mockStreamCompletion = streamCompletion as jest.MockedFunction<typeof streamCompletion>;
 const mockCreateConversation = createConversation as jest.MockedFunction<typeof createConversation>;
 const mockInsertMessage = insertMessage as jest.MockedFunction<typeof insertMessage>;
+const mockUpdateConversation = updateConversation as jest.MockedFunction<typeof updateConversation>;
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -295,13 +302,16 @@ describe('POST /api/chat — DB persistence', () => {
     expect(mockInsertMessage).not.toHaveBeenCalled();
   });
 
-  it('skips createConversation but inserts messages when conversationId is provided', async () => {
+  it('skips createConversation but inserts messages and updates timestamp when conversationId is provided', async () => {
     mockStreamCompletion.mockResolvedValue(tokenGen(['Hi']));
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Continue' }];
     await collectEvents(await POST(makeRequest(messages, 'existing-id')));
 
     expect(mockCreateConversation).not.toHaveBeenCalled();
+    expect(mockUpdateConversation).toHaveBeenCalledWith('existing-id', {
+      updated_at: expect.any(Number),
+    });
     expect(mockInsertMessage).toHaveBeenCalledTimes(2);
     expect(mockInsertMessage).toHaveBeenNthCalledWith(
       1,
@@ -614,5 +624,65 @@ describe('POST /api/chat — validation edge cases', () => {
     });
 
     await expect(POST(request)).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 10: Multi-turn conversation persistence (B5)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/chat — multi-turn conversation persistence', () => {
+  it('includes conversation_id in message_stop event', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hi']));
+
+    const response = await POST(makeRequest([{ role: 'user', content: 'Hello' }]));
+    const events = await collectEvents(response);
+
+    const stopEvent = events.find((e) => e.type === 'message_stop');
+    expect(stopEvent).toBeDefined();
+    if (stopEvent?.type === 'message_stop') {
+      expect(typeof stopEvent.conversation_id).toBe('string');
+      expect(stopEvent.conversation_id.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('returns the provided conversationId in message_stop when continuing a conversation', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['reply']));
+
+    const response = await POST(
+      makeRequest([{ role: 'user', content: 'Continue' }], 'existing-conv-42')
+    );
+    const events = await collectEvents(response);
+
+    const stopEvent = events.find((e) => e.type === 'message_stop');
+    if (stopEvent?.type === 'message_stop') {
+      expect(stopEvent.conversation_id).toBe('existing-conv-42');
+    }
+  });
+
+  it('saves the LAST user message content for multi-turn conversations', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['answer']));
+
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+      { role: 'user', content: 'Follow-up question' },
+    ];
+    await collectEvents(await POST(makeRequest(messages)));
+
+    // The user message persisted should be the LAST one, not the first
+    expect(mockInsertMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ role: 'user', content: 'Follow-up question' })
+    );
+  });
+
+  it('does not call updateConversation for new conversations', async () => {
+    mockStreamCompletion.mockResolvedValue(tokenGen(['Hi']));
+
+    await collectEvents(await POST(makeRequest([{ role: 'user', content: 'Hello' }])));
+
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
+    expect(mockUpdateConversation).not.toHaveBeenCalled();
   });
 });

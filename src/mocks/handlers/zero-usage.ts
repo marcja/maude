@@ -18,7 +18,11 @@ const events: SSEEvent[] = [
   { type: 'content_block_delta', delta: { text: ' world' } },
   { type: 'content_block_delta', delta: { text: '!' } },
   { type: 'content_block_stop' },
-  { type: 'message_stop', usage: { input_tokens: 0, output_tokens: 0 } },
+  {
+    type: 'message_stop',
+    conversation_id: 'zero-usage.ts-conv',
+    usage: { input_tokens: 0, output_tokens: 0 },
+  },
 ];
 
 export const zeroUsageHandler = createSyncHandler(events);
