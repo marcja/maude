@@ -28,8 +28,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
+import ChatShell from '../../../components/chat/ChatShell';
 import { ObservabilityProvider } from '../../../context/ObservabilityContext';
 import type { SSEEvent } from '../../../lib/client/events';
+import type { ConversationSummary } from '../../../lib/shared/types';
 import {
   FIXTURE_CONVERSATIONS,
   FIXTURE_MESSAGES,
@@ -42,7 +44,6 @@ import { midstreamErrorHandler } from '../../../mocks/handlers/midstream-error';
 import { normalHandler } from '../../../mocks/handlers/normal';
 import { server, setupMSWServer } from '../../../mocks/server';
 import { encodeEvent } from '../../../mocks/utils';
-import ChatPage from '../page';
 
 // ---------------------------------------------------------------------------
 // MSW server
@@ -80,12 +81,12 @@ afterEach(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Wraps ChatPage with ObservabilityProvider — required by useObservabilityEvents. */
-function renderChatPage() {
+/** Wraps ChatShell with ObservabilityProvider — required by useObservabilityEvents. */
+function renderChatPage(initialConversations: ConversationSummary[] = []) {
   function Wrapper({ children }: { children: ReactNode }) {
     return <ObservabilityProvider>{children}</ObservabilityProvider>;
   }
-  return render(<ChatPage />, { wrapper: Wrapper });
+  return render(<ChatShell initialConversations={initialConversations} />, { wrapper: Wrapper });
 }
 
 /** Type a message into the chat input and press Enter to submit. */
@@ -356,4 +357,34 @@ describe('ChatPage — UI integration', () => {
       expect(screen.getByText('Hello there')).toBeInTheDocument();
     });
   }, 15000);
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7: Server-to-client data flow (initialConversations prop)
+// ---------------------------------------------------------------------------
+
+describe('ChatPage — initialConversations prop', () => {
+  it('passes initialConversations to HistoryPane so conversations render without fetch', async () => {
+    // Use a conversations handler that never responds — if HistoryPane
+    // relied solely on the fetch, the pane would show "Loading…" forever.
+    // With initialConversations, the data is visible immediately.
+    server.use(
+      http.get('/api/conversations', () => {
+        // Never resolve — simulates a slow network
+        return new Promise(() => {});
+      }),
+      conversationMessagesHandler
+    );
+    const user = userEvent.setup();
+    renderChatPage(FIXTURE_CONVERSATIONS);
+
+    // Expand history pane
+    await user.click(screen.getByRole('button', { name: /expand history/i }));
+
+    // Conversations from the prop should be visible immediately even though
+    // the fetch is still in-flight. This proves the server component's
+    // initialConversations prop eliminates the loading flash.
+    expect(screen.getByText('First conversation')).toBeInTheDocument();
+    expect(screen.getByText('Second conversation')).toBeInTheDocument();
+  });
 });

@@ -27,6 +27,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import type { ConversationSummary } from '../../../lib/shared/types';
 import {
   FIXTURE_CONVERSATIONS,
   FIXTURE_MESSAGES,
@@ -55,6 +56,8 @@ interface PaneProps {
   onSelectConversation: jest.Mock;
   onNewChat: jest.Mock;
   activeConversationId: string | null;
+  refreshToken?: number;
+  initialConversations?: ConversationSummary[];
 }
 
 const defaultProps: PaneProps = {
@@ -264,6 +267,24 @@ describe('HistoryPane — error handling', () => {
       expect(screen.getByText(/failed to load conversations/i)).toBeInTheDocument();
     });
   });
+
+  it('shows stale conversations alongside error on re-fetch failure', async () => {
+    // First render succeeds — conversations are visible
+    server.use(conversationsListHandler);
+    const { rerender } = render(<HistoryPane {...defaultProps} refreshToken={0} />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('conversation-item')).toHaveLength(2);
+    });
+
+    // Re-fetch fails — error appears but stale conversations remain
+    server.use(conversationsErrorHandler);
+    rerender(<HistoryPane {...defaultProps} refreshToken={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load conversations/i)).toBeInTheDocument();
+    });
+    expect(screen.getAllByTestId('conversation-item')).toHaveLength(2);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -310,5 +331,43 @@ describe('HistoryPane — refreshToken', () => {
     // Assert the absence of a fetch — waitFor with a short timeout lets React
     // effects settle without a brittle hardcoded setTimeout.
     await waitFor(() => expect(fetchCount).toBe(0), { timeout: 200 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 8: initialConversations prop (T34 — server component data flow)
+// ---------------------------------------------------------------------------
+
+describe('HistoryPane — initialConversations', () => {
+  it('renders server-provided conversations immediately without fetch', () => {
+    // Never-resolving handler — any fetch would show "Loading…"
+    server.use(http.get('/api/conversations', () => new Promise(() => {})));
+    renderPane({ initialConversations: FIXTURE_CONVERSATIONS });
+
+    // Data from prop is visible synchronously — no loading flash
+    expect(screen.getByText('First conversation')).toBeInTheDocument();
+    expect(screen.getByText('Second conversation')).toBeInTheDocument();
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+
+  it('syncs state when initialConversations prop changes', async () => {
+    server.use(http.get('/api/conversations', () => new Promise(() => {})));
+    const updated: ConversationSummary[] = [
+      {
+        id: 'conv-3',
+        title: 'Third conversation',
+        created_at: 1700000000000,
+        updated_at: 1700000400000,
+      },
+    ];
+
+    const { rerender } = render(
+      <HistoryPane {...defaultProps} initialConversations={FIXTURE_CONVERSATIONS} />
+    );
+    expect(screen.getByText('First conversation')).toBeInTheDocument();
+
+    rerender(<HistoryPane {...defaultProps} initialConversations={updated} />);
+    expect(screen.getByText('Third conversation')).toBeInTheDocument();
+    expect(screen.queryByText('First conversation')).not.toBeInTheDocument();
   });
 });

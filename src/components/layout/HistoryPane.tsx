@@ -9,8 +9,9 @@
  *
  * Design decisions:
  *
- * - Fetches from /api/conversations on mount (when expanded). The API routes
- *   are created in T26; tests use MSW handlers to mock them.
+ * - Server component parent passes initialConversations so the pane renders
+ *   with data immediately (no loading flash). The useEffect re-fetch on
+ *   expand/refreshToken keeps data fresh after mutations.
  *
  * - Types are imported from src/lib/shared/types.ts — the single source of
  *   truth for domain types shared across the server-only and client boundaries.
@@ -18,11 +19,11 @@
  * - Delete uses window.confirm() for simplicity — no custom modal needed
  *   for a pedagogical app.
  *
- * - Conversation selection fetches messages via GET /api/conversations/:id
- *   and passes them to the parent via onSelectConversation callback.
+ * - Conversation selection and deletion use useTransition with async callbacks
+ *   (React 19) rather than manual loading/error state management.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 
 import type { ConversationSummary, Message } from '../../lib/shared/types';
 
@@ -48,6 +49,10 @@ interface HistoryPaneProps {
   /** Incremented by the parent after each completed stream to trigger a
    *  re-fetch of the conversation list (B2: history pane refresh). */
   refreshToken?: number;
+  /** Server-fetched conversations passed from the server component parent.
+   *  Eliminates the loading flash on initial render — the useEffect fetch
+   *  still runs on expand/refresh to keep data fresh. */
+  initialConversations?: ConversationSummary[];
 }
 
 // ---------------------------------------------------------------------------
@@ -78,71 +83,96 @@ export function HistoryPane({
   onNewChat,
   activeConversationId,
   refreshToken,
+  initialConversations,
 }: HistoryPaneProps) {
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>(
+    initialConversations ?? []
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch conversations list from the API.
-  // Accepts an optional AbortSignal so the useEffect cleanup can cancel
-  // in-flight requests when the pane collapses or the component unmounts.
-  // Plain function — React Compiler memoizes automatically since it captures
-  // only stable setState references.
-  async function fetchConversations(signal?: AbortSignal) {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/conversations', { signal });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data: ConversationSummary[] = await res.json();
-      setConversations(data);
-    } catch (err) {
-      // Abort is not an error — the component is unmounting or collapsing.
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      setError('Failed to load conversations');
-    } finally {
-      setLoading(false);
-    }
+  // Sync conversations state when the server-provided initialConversations
+  // prop changes (e.g., after a client-side navigation triggers a new server
+  // render). useState only reads the initial value on first mount, so
+  // subsequent prop changes need explicit state synchronization.
+  const [prevInitial, setPrevInitial] = useState(initialConversations);
+  if (prevInitial !== initialConversations) {
+    setPrevInitial(initialConversations);
+    setConversations(initialConversations ?? []);
   }
+
+  // useTransition wraps select and delete actions so React can track their
+  // pending state automatically. Both are user-initiated async mutations
+  // that should not block the UI — useTransition marks their state updates
+  // as non-urgent so the pane stays interactive during the fetch.
+  const [, startTransition] = useTransition();
 
   // Fetch conversations when expanded, and re-fetch when refreshToken changes
   // (e.g., after a stream completes and a new conversation is persisted).
   // Merged into a single effect to prevent double-fetching when collapsed
   // transitions to false while refreshToken is already non-zero.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchConversations captures only stable setState — safe to omit
+  // Fetch logic is inlined so no function reference needs tracking.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken is an intentional trigger — its value change signals "re-fetch now", not a stale closure risk
   useEffect(() => {
     if (collapsed) return;
     const controller = new AbortController();
-    fetchConversations(controller.signal);
+
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch('/api/conversations', { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: ConversationSummary[] = await res.json();
+        setConversations(data);
+      } catch (err) {
+        // Abort is not an error — the component is unmounting or collapsing.
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError('Failed to load conversations');
+      } finally {
+        setLoading(false);
+      }
+    })();
+
     return () => controller.abort();
   }, [collapsed, refreshToken]);
 
-  // Handle selecting a conversation — fetch its messages
-  async function handleSelect(id: string) {
-    try {
-      const res = await fetch(`/api/conversations/${id}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: { messages: HistoryMessage[] } = await res.json();
-      onSelectConversation(id, data.messages);
-    } catch {
-      setError('Failed to load conversation');
-    }
+  // Handle selecting a conversation — fetch its messages.
+  // Wrapped in startTransition so React tracks the async operation as
+  // non-urgent, keeping the pane interactive while messages load.
+  function handleSelect(id: string) {
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/conversations/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: { messages: HistoryMessage[] } = await res.json();
+        onSelectConversation(id, data.messages);
+      } catch {
+        setError('Failed to load conversation');
+      }
+    });
   }
 
-  // Handle deleting a conversation with confirmation
-  async function handleDelete(id: string) {
+  // Handle deleting a conversation with confirmation.
+  // window.confirm() runs synchronously before the transition; the async
+  // delete + re-fetch runs inside startTransition so the pane stays
+  // interactive and React batches the resulting state updates.
+  function handleDelete(id: string) {
     if (!window.confirm('Delete this conversation?')) return;
 
-    try {
-      const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Refetch list after successful delete
-      await fetchConversations();
-    } catch {
-      setError('Failed to delete conversation');
-    }
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Re-fetch list after successful delete
+        const listRes = await fetch('/api/conversations');
+        if (!listRes.ok) throw new Error(`HTTP ${listRes.status}`);
+        const data: ConversationSummary[] = await listRes.json();
+        setConversations(data);
+      } catch {
+        setError('Failed to delete conversation');
+      }
+    });
   }
 
   // -- Collapsed strip: 32px wide with vertical "History" label ---------------
@@ -195,9 +225,13 @@ export function HistoryPane({
           </button>
         </div>
 
-        {/* Content area */}
+        {/* Content area — show existing conversations even during a background
+             refresh so server-provided initialConversations remain visible while
+             the useEffect re-fetch is in flight. */}
         <div className="flex-1 overflow-y-auto">
-          {loading && <p className="py-4 text-center text-xs text-gray-400">Loading…</p>}
+          {loading && conversations.length === 0 && (
+            <p className="py-4 text-center text-xs text-gray-400">Loading…</p>
+          )}
 
           {error && <p className="py-4 text-center text-xs text-red-500">{error}</p>}
 
@@ -205,7 +239,7 @@ export function HistoryPane({
             <p className="py-4 text-center text-xs text-gray-400">No conversations yet</p>
           )}
 
-          {!loading && !error && conversations.length > 0 && (
+          {conversations.length > 0 && (
             <div className="flex flex-col">
               {groupByDate(conversations).map(({ group, items }) => (
                 <div key={group}>

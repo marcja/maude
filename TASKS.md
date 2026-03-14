@@ -305,7 +305,7 @@ list server-side. Streaming core remains correctly client-side.
       Test: `SettingsForm` renders with prop-based initial data; save flow
         unchanged; mount-time fetch removed; existing E2E tests pass
 
-- [ ] T34 — Chat page shell server component conversion
+- [x] T34 — Chat page shell server component conversion
       User value: conversation list is pre-populated on navigation —
         no flash of empty sidebar
       Deliverable: `chat/page.tsx` becomes server component;
