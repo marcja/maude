@@ -105,6 +105,43 @@ function encode(event: SSEEvent): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 }
 
+const TITLE_MAX = 50;
+
+/**
+ * Derive a human-readable conversation title from the first user message.
+ * Prefers natural sentence boundaries (. ? ! \n) over arbitrary truncation
+ * so titles read as complete thoughts rather than mid-word fragments.
+ */
+export function generateTitle(content: string): string {
+  const trimmed = content.trim();
+  if (trimmed.length === 0) return 'New conversation';
+
+  // Use only the first line — multi-line messages should title from the opener.
+  const firstLine = trimmed.split('\n')[0].trim();
+  if (firstLine.length === 0) return 'New conversation';
+
+  // Find the first sentence boundary (. ? !) within the first line.
+  const sentenceEnd = firstLine.search(/[.?!]/);
+  if (sentenceEnd !== -1) {
+    // Include the punctuation character itself.
+    const sentence = firstLine.slice(0, sentenceEnd + 1);
+    if (sentence.length <= TITLE_MAX) return sentence;
+  }
+
+  // Short enough already — no truncation needed.
+  if (firstLine.length <= TITLE_MAX) return firstLine;
+
+  // Truncate at the last word boundary before the limit, leaving room for "…".
+  const truncLimit = TITLE_MAX - 1; // reserve 1 char for ellipsis
+  const lastSpace = firstLine.lastIndexOf(' ', truncLimit);
+  if (lastSpace > 0) {
+    return `${firstLine.slice(0, lastSpace)}\u2026`;
+  }
+
+  // No space found — hard truncate (single very long word).
+  return `${firstLine.slice(0, truncLimit)}\u2026`;
+}
+
 // ---------------------------------------------------------------------------
 // Thinking-block streaming parser
 // ---------------------------------------------------------------------------
@@ -328,7 +365,7 @@ export async function POST(request: Request): Promise<Response> {
         const { content: accumulatedContent, thinking: accumulatedThinking } = dispatcher.result();
         const now = Date.now();
         if (!incomingConversationId) {
-          const title = lastUserContent.slice(0, 50) || 'New conversation';
+          const title = generateTitle(lastUserContent);
           createConversation(conversationId, title, now);
         } else {
           // Existing conversation: bump updated_at so the history pane can
