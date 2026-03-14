@@ -14,7 +14,7 @@
  *   async due to startTransition).
  */
 
-import { startTransition, useEffect, useRef, useState } from 'react';
+import { startTransition, useRef, useState } from 'react';
 import type { SSEEvent } from '../lib/client/events';
 import { parseSSEStream } from '../lib/client/sseParser';
 
@@ -130,15 +130,6 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
   // persistence by passing it back on subsequent send() calls.
   const conversationIdRef = useRef<string | null>(null);
 
-  // Stable ref for onEvent so send() always sees the latest callback without
-  // needing it as a closure dependency — avoids stale references. Synced in
-  // an effect (not render) to avoid an impure render that the React Compiler
-  // would flag.
-  const onEventRef = useRef(options?.onEvent);
-  useEffect(() => {
-    onEventRef.current = options?.onEvent;
-  }, [options?.onEvent]);
-
   const stop = () => {
     abortRef.current?.abort();
   };
@@ -148,6 +139,11 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
     conversationId?: string | null,
     onComplete?: OnStreamComplete
   ) => {
+    // Capture onEvent at call time — safe because useObservabilityEvents'
+    // onEvent only reads refs and calls stable dispatch, so identity changes
+    // don't affect behavior.
+    const onEvent = options?.onEvent;
+
     // Cancel any in-flight request before starting a new one so a user who
     // rapidly submits does not receive interleaved responses.
     abortRef.current?.abort();
@@ -214,7 +210,7 @@ export function useStream(options?: UseStreamOptions): UseStreamResult {
 
         // Notify the onEvent callback before processing — allows observability
         // hooks to see every raw SSE event without modifying useStream's logic.
-        onEventRef.current?.(event);
+        onEvent?.(event);
 
         switch (event.type) {
           case 'content_block_delta': {

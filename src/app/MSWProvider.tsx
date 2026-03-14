@@ -16,9 +16,13 @@
  *   tests can call window.__msw.use(key) to activate handlers by name.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function MSWProvider({ children }: { children: React.ReactNode }) {
+  // Store the worker instance so cleanup can call worker.stop() to
+  // deregister the service worker when the component unmounts.
+  const workerRef = useRef<{ stop: () => void } | null>(null);
+
   useEffect(() => {
     // Guard: never load the service worker in production. The dynamic import
     // below is still present in the production bundle unless this guard is here
@@ -39,11 +43,14 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
         serviceWorker: { url: '/mockServiceWorker.js' },
       });
       if (cancelled) return;
+      workerRef.current = worker;
       // Expose the string-keyed bridge for Playwright test coordination.
       mountMSW(worker);
     })();
     return () => {
       cancelled = true;
+      workerRef.current?.stop();
+      workerRef.current = null;
     };
   }, []);
 

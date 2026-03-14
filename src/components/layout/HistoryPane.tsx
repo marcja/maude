@@ -22,7 +22,7 @@
  *   and passes them to the parent via onSelectConversation callback.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // Client-side types (mirror server shapes from db.ts)
@@ -100,7 +100,9 @@ export function HistoryPane({
   // Fetch conversations list from the API.
   // Accepts an optional AbortSignal so the useEffect cleanup can cancel
   // in-flight requests when the pane collapses or the component unmounts.
-  const fetchConversations = useCallback(async (signal?: AbortSignal) => {
+  // Plain function — React Compiler memoizes automatically since it captures
+  // only stable setState references.
+  async function fetchConversations(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
@@ -117,57 +119,45 @@ export function HistoryPane({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }
 
-  // Fetch on mount when expanded; abort on collapse or unmount.
+  // Fetch conversations when expanded, and re-fetch when refreshToken changes
+  // (e.g., after a stream completes and a new conversation is persisted).
+  // Merged into a single effect to prevent double-fetching when collapsed
+  // transitions to false while refreshToken is already non-zero.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchConversations captures only stable setState — safe to omit
   useEffect(() => {
     if (collapsed) return;
     const controller = new AbortController();
     fetchConversations(controller.signal);
     return () => controller.abort();
-  }, [collapsed, fetchConversations]);
-
-  // Re-fetch conversation list when the parent signals a refresh (e.g.,
-  // after a stream completes and a new conversation is persisted server-side).
-  useEffect(() => {
-    if (collapsed) return;
-    // Skip the initial mount — the effect above already handles that.
-    if (refreshToken === undefined || refreshToken === 0) return;
-    fetchConversations();
-  }, [refreshToken, collapsed, fetchConversations]);
-
-  // Stable ref for onSelectConversation so useCallback doesn't churn.
-  const onSelectRef = useRef(onSelectConversation);
-  onSelectRef.current = onSelectConversation;
+  }, [collapsed, refreshToken]);
 
   // Handle selecting a conversation — fetch its messages
-  const handleSelect = useCallback(async (id: string) => {
+  async function handleSelect(id: string) {
     try {
       const res = await fetch(`/api/conversations/${id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: { messages: HistoryMessage[] } = await res.json();
-      onSelectRef.current(id, data.messages);
+      onSelectConversation(id, data.messages);
     } catch {
       setError('Failed to load conversation');
     }
-  }, []);
+  }
 
   // Handle deleting a conversation with confirmation
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (!window.confirm('Delete this conversation?')) return;
+  async function handleDelete(id: string) {
+    if (!window.confirm('Delete this conversation?')) return;
 
-      try {
-        const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // Refetch list after successful delete
-        await fetchConversations();
-      } catch {
-        setError('Failed to delete conversation');
-      }
-    },
-    [fetchConversations]
-  );
+    try {
+      const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Refetch list after successful delete
+      await fetchConversations();
+    } catch {
+      setError('Failed to delete conversation');
+    }
+  }
 
   // -- Collapsed strip: 32px wide with vertical "History" label ---------------
   if (collapsed) {

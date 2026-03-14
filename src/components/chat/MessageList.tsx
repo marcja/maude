@@ -9,8 +9,10 @@
  * this component.
  *
  * Design decision: `listRef` is passed in rather than created here because the
- * parent needs imperative access to scrollTop/scrollHeight. If the ref were
- * owned here it would require forwardRef, which adds surface area for no gain.
+ * parent needs imperative access to scrollTop/scrollHeight. React 19 supports
+ * `ref` as a regular prop (no forwardRef needed), but `listRef` as a named prop
+ * is preferred for semantic clarity — it communicates that the parent owns scroll
+ * control, not that this component exposes its root element.
  */
 
 import type { RefObject } from 'react';

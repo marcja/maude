@@ -19,7 +19,7 @@
  *   display it directly without formatting logic at render time.
  */
 
-import { type ReactNode, createContext, useContext, useReducer } from 'react';
+import { type ReactNode, createContext, useContext, useMemo, useReducer } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -158,33 +158,33 @@ const ObservabilityContext = createContext<ObservabilityContextValue | null>(nul
 export function ObservabilityProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(observabilityReducer, INITIAL_OBSERVABILITY_STATE);
 
-  const addEvent = (event: Omit<ObservabilityEvent, 'id'>) => {
-    dispatch({ type: 'ADD_EVENT', event });
-  };
+  // Memoize the context value so consumers only re-render when state changes.
+  // dispatch is stable (React guarantees referential identity), so the memo
+  // effectively keys on state alone. The React Compiler would handle this
+  // automatically, but explicit useMemo signals the intent — belt-and-suspenders.
+  const value: ObservabilityContextValue = useMemo(() => {
+    const addEvent = (event: Omit<ObservabilityEvent, 'id'>) => {
+      dispatch({ type: 'ADD_EVENT', event });
+    };
 
-  const startRequest = (request: RequestMetrics) => {
-    dispatch({ type: 'START_REQUEST', request });
-  };
+    const startRequest = (request: RequestMetrics) => {
+      dispatch({ type: 'START_REQUEST', request });
+    };
 
-  const updateRequest = (id: string, updates: Partial<Omit<RequestMetrics, 'id'>>) => {
-    dispatch({ type: 'UPDATE_REQUEST', id, updates });
-  };
+    const updateRequest = (id: string, updates: Partial<Omit<RequestMetrics, 'id'>>) => {
+      dispatch({ type: 'UPDATE_REQUEST', id, updates });
+    };
 
-  const setSystemPrompt = (prompt: string) => {
-    dispatch({ type: 'SET_SYSTEM_PROMPT', prompt });
-  };
+    const setSystemPrompt = (prompt: string) => {
+      dispatch({ type: 'SET_SYSTEM_PROMPT', prompt });
+    };
 
-  const clear = () => {
-    dispatch({ type: 'CLEAR' });
-  };
-  const value: ObservabilityContextValue = {
-    state,
-    addEvent,
-    startRequest,
-    updateRequest,
-    setSystemPrompt,
-    clear,
-  };
+    const clear = () => {
+      dispatch({ type: 'CLEAR' });
+    };
+
+    return { state, addEvent, startRequest, updateRequest, setSystemPrompt, clear };
+  }, [state]);
 
   return <ObservabilityContext value={value}>{children}</ObservabilityContext>;
 }

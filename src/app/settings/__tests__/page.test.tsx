@@ -3,7 +3,8 @@
  *
  * Tests for the Settings page component. Uses fetch mocking (not MSW) because
  * the component runs in jsdom where MSW's service worker is unavailable.
- * The component fetches from /api/settings on mount and POSTs on save.
+ * The component fetches from /api/settings on mount and POSTs on save via
+ * React 19's useActionState (form action prop + FormData).
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -48,7 +49,8 @@ describe('SettingsPage — loading', () => {
 
     render(<SettingsPage />);
 
-    // Wait for the fetch to resolve and fields to populate
+    // Wait for the fetch to resolve and fields to populate (uncontrolled
+    // inputs with defaultValue — rendered after the mount-time fetch resolves)
     await waitFor(() => {
       expect(screen.getByLabelText(/name/i)).toHaveValue('Alice');
     });
@@ -105,11 +107,13 @@ describe('SettingsPage — saving', () => {
     // Click save
     await user.click(screen.getByRole('button', { name: /save/i }));
 
-    // Verify POST was called with correct body
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Bob', personalizationPrompt: 'Be helpful' }),
+    // useActionState runs the action in a transition — wait for the POST
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Bob', personalizationPrompt: 'Be helpful' }),
+      });
     });
 
     // Success feedback should appear
