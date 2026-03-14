@@ -1,3 +1,46 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    /* Prevent document-level scrolling — only the message list should scroll.
+       Without this, flexbox min-height: auto on intermediate containers can
+       still push content beyond viewport and trigger body scroll. */
+    overflow: hidden;
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface text-content antialiased;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #333442;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #44455a;
+  }
+
+  /* Selection color */
+  ::selection {
+    background: #c4916e40;
+    color: #e4e4ec;
+  }
+}
