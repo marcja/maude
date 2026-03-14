@@ -15,7 +15,13 @@
  *   synchronous and available the moment mountMSW() is called.
  */
 
+import type { RequestHandler } from 'msw';
 import { setupWorker } from 'msw/browser';
+import {
+  conversationDeleteHandler,
+  conversationMessagesHandler,
+  conversationsListHandler,
+} from './handlers/conversations';
 import { holdHandler } from './handlers/hold';
 import { markdownHandler } from './handlers/markdown';
 import { midstreamErrorHandler } from './handlers/midstream-error';
@@ -30,6 +36,9 @@ import { thinkingHandler } from './handlers/thinking';
 // Handler registry
 // ---------------------------------------------------------------------------
 
+// Values may be a single handler or an array (e.g. the conversations key
+// registers list + detail + delete routes together). `satisfies` preserves
+// literal key types while enforcing value shape.
 const HANDLERS = {
   normal: normalHandler,
   'normal-alice': normalAliceHandler,
@@ -40,7 +49,8 @@ const HANDLERS = {
   thinking: thinkingHandler,
   markdown: markdownHandler,
   hold: holdHandler,
-} as const;
+  conversations: [conversationsListHandler, conversationMessagesHandler, conversationDeleteHandler],
+} satisfies Record<string, RequestHandler | RequestHandler[]>;
 
 export type HandlerKey = keyof typeof HANDLERS;
 
@@ -61,7 +71,14 @@ export const worker = setupWorker();
  */
 export function mountMSW(w: typeof worker): void {
   window.__msw = {
-    use: (key: HandlerKey) => w.use(HANDLERS[key]),
+    use: (key: HandlerKey) => {
+      const h = HANDLERS[key];
+      if (Array.isArray(h)) {
+        w.use(...h);
+      } else {
+        w.use(h);
+      }
+    },
     reset: () => w.resetHandlers(),
   };
 }

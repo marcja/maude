@@ -177,7 +177,14 @@ export function HistoryPane({
     <div className="flex h-full w-[280px] flex-col border-r border-gray-200 bg-white">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-200 px-3 py-1.5">
-        <span className="text-xs font-semibold text-gray-700">History</span>
+        <button
+          type="button"
+          aria-label="Collapse history pane"
+          className="text-xs font-semibold text-gray-700 hover:text-gray-500"
+          onClick={onToggle}
+        >
+          History
+        </button>
         <button
           type="button"
           className="rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"

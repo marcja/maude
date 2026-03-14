@@ -219,7 +219,7 @@ page, full three-column layout with history pane on the left.
       Test: loads conversations from API; click restores all messages; delete
         with confirmation; new conversation starts fresh; pane collapses
 
-- [ ] T23 — Full three-column layout
+- [x] T23 — Full three-column layout
       User value: **M4 partial** — history + chat + observability all visible
       Deliverable: update `chat/page.tsx` to add left HistoryPane; all three
         columns present; each pane independently collapsible

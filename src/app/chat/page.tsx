@@ -3,15 +3,23 @@
 /**
  * src/app/chat/page.tsx
  *
- * Two-column chat page — M3 milestone. Center column holds the chat UI;
- * right column holds the collapsible ObservabilityPane (toggled via ⚙ button).
+ * Three-column chat page — M4 milestone. Left column: collapsible HistoryPane;
+ * center: chat UI; right: collapsible ObservabilityPane (toggled via ⚙ button).
  *
  * Design decisions:
  *
- * Two-column flex layout:
- *   Outer div is flex-row h-screen. Center column is flex-1 min-w-0 so it
- *   fills remaining width when the pane is expanded or collapsed.
- *   Inner content div retains max-w-3xl mx-auto for readable line lengths.
+ * Three-column flex layout:
+ *   Outer div is flex-row h-screen. HistoryPane sits on the left (280px
+ *   expanded, 32px collapsed). Center column is flex-1 min-w-0 so it fills
+ *   remaining width. ObservabilityPane sits on the right (300px / 32px).
+ *   Both side panes are independently collapsible; center always fills
+ *   remaining width.
+ *
+ * History pane integration (T23):
+ *   HistoryPane fetches from /api/conversations on mount. Clicking a
+ *   conversation loads its messages into the chat via onSelectConversation.
+ *   Loaded messages become the conversation context — subsequent sends
+ *   include all prior messages so the model has full context.
  *
  * Single-level toggle:
  *   The ⚙ button toggles between expanded (300px) and collapsed (32px strip).
@@ -49,6 +57,8 @@ import { MessageItem } from '../../components/chat/MessageItem';
 import { MessageList } from '../../components/chat/MessageList';
 import { StallIndicator } from '../../components/chat/StallIndicator';
 import { ThinkingBlock } from '../../components/chat/ThinkingBlock';
+import { HistoryPane } from '../../components/layout/HistoryPane';
+import type { HistoryMessage } from '../../components/layout/HistoryPane';
 import { ObservabilityPane } from '../../components/layout/ObservabilityPane';
 import { useObservability } from '../../context/ObservabilityContext';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
@@ -76,6 +86,12 @@ interface Message {
 export default function ChatPage() {
   // Finalized conversation messages (user turns + completed assistant turns).
   const [history, setHistory] = useState<Message[]>([]);
+
+  // History pane: collapsed by default; expands to show conversation list.
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  // Active conversation ID — highlighted in the history pane list.
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   // Debug pane: ⚙ button toggles between expanded (300px) and collapsed (32px strip).
   // Single toggle level — no separate "hidden" vs "collapsed" states.
@@ -146,7 +162,7 @@ export default function ChatPage() {
           role: 'assistant' as const,
           content: t,
           ttft: f,
-          thinkingText: tt || undefined,
+          thinkingText: tt ?? undefined,
           thinkingDurationMs: td,
         },
       ]);
@@ -174,9 +190,25 @@ export default function ChatPage() {
     send(failedMessages, undefined, appendAssistant);
   };
 
+  // Handle selecting a conversation from the history pane — loads its
+  // messages into the chat as if they were locally produced turns.
+  const handleSelectConversation = (id: string, messages: HistoryMessage[]) => {
+    stop();
+    setActiveConversationId(id);
+    setHistory(
+      messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        thinkingText: m.thinking ?? undefined,
+      }))
+    );
+  };
+
   const handleNewChat = () => {
     stop();
     setHistory([]);
+    setActiveConversationId(null);
   };
 
   // -------------------------------------------------------------------------
@@ -184,9 +216,18 @@ export default function ChatPage() {
   // -------------------------------------------------------------------------
 
   return (
-    // Outer flex-row: center column fills remaining width; ObservabilityPane
-    // sits on the right at 300px (expanded) or 32px (collapsed).
+    // Outer flex-row: HistoryPane on the left, center fills remaining width,
+    // ObservabilityPane on the right. Both side panes independently collapsible.
     <div className="flex h-screen w-full">
+      {/* Left pane — always mounted; collapsed strip or 280px expanded */}
+      <HistoryPane
+        collapsed={!historyExpanded}
+        onToggle={() => setHistoryExpanded((prev) => !prev)}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleNewChat}
+        activeConversationId={activeConversationId}
+      />
+
       {/* Center column — chat UI */}
       <div className="chat-page flex flex-1 min-w-0 flex-col">
         {/* Header bar with gear toggle for debug pane */}
