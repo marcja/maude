@@ -36,6 +36,14 @@ function routeContext(id: string): { params: Promise<{ id: string }> } {
   return { params: Promise.resolve({ id }) };
 }
 
+/** Reusable fixture — avoids duplicating the same object in every test. */
+const FIXTURE_CONVERSATION: ConversationRow = {
+  id: 'c1',
+  title: 'Test',
+  created_at: 1000,
+  updated_at: 2000,
+};
+
 // ---------------------------------------------------------------------------
 // Suite 1: GET /api/conversations/[id]
 // ---------------------------------------------------------------------------
@@ -44,12 +52,6 @@ describe('GET /api/conversations/[id]', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('returns messages for an existing conversation', async () => {
-    const conversation: ConversationRow = {
-      id: 'c1',
-      title: 'Test',
-      created_at: 1000,
-      updated_at: 2000,
-    };
     const messages: MessageRow[] = [
       {
         id: 'm1',
@@ -68,7 +70,7 @@ describe('GET /api/conversations/[id]', () => {
         created_at: 1001,
       },
     ];
-    mockGetConversation.mockReturnValueOnce(conversation);
+    mockGetConversation.mockReturnValueOnce(FIXTURE_CONVERSATION);
     mockGetMessages.mockReturnValueOnce(messages);
 
     const response = await GET(
@@ -112,14 +114,8 @@ describe('GET /api/conversations/[id]', () => {
 describe('DELETE /api/conversations/[id]', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('deletes an existing conversation and returns 204', async () => {
-    const conversation: ConversationRow = {
-      id: 'c1',
-      title: 'Test',
-      created_at: 1000,
-      updated_at: 2000,
-    };
-    mockGetConversation.mockReturnValueOnce(conversation);
+  it('deletes an existing conversation and returns 204 with empty body', async () => {
+    mockGetConversation.mockReturnValueOnce(FIXTURE_CONVERSATION);
 
     const response = await DELETE(
       new Request('http://localhost/api/conversations/c1', { method: 'DELETE' }),
@@ -128,6 +124,8 @@ describe('DELETE /api/conversations/[id]', () => {
 
     expect(response.status).toBe(204);
     expect(mockDeleteConversation).toHaveBeenCalledWith('c1');
+    const text = await response.text();
+    expect(text).toBe('');
   });
 
   it('returns 404 when conversation does not exist', async () => {
@@ -140,23 +138,5 @@ describe('DELETE /api/conversations/[id]', () => {
 
     expect(response.status).toBe(404);
     expect(mockDeleteConversation).not.toHaveBeenCalled();
-  });
-
-  it('returns empty body on successful delete', async () => {
-    const conversation: ConversationRow = {
-      id: 'c1',
-      title: 'Test',
-      created_at: 1000,
-      updated_at: 2000,
-    };
-    mockGetConversation.mockReturnValueOnce(conversation);
-
-    const response = await DELETE(
-      new Request('http://localhost/api/conversations/c1', { method: 'DELETE' }),
-      routeContext('c1')
-    );
-
-    const text = await response.text();
-    expect(text).toBe('');
   });
 });
