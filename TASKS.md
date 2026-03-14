@@ -212,7 +212,7 @@ and system prompt tab make the streaming infrastructure teachable and inspectabl
 **Milestone M4:** Complete application. Conversation history, settings, welcome
 page, full three-column layout with history pane on the left.
 
-- [ ] T22 — History pane component
+- [x] T22 — History pane component
       User value: browse and reload past conversations
       Deliverable: `src/components/layout/HistoryPane.tsx`
       Depends: T01
