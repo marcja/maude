@@ -243,7 +243,7 @@ page, full three-column layout with history pane on the left.
       Test (Playwright): settings injection end-to-end — set name → chat →
         System Prompt tab shows name injected
 
-- [ ] T26 — Conversation API routes
+- [x] T26 — Conversation API routes
       User value: history pane can load, create, and delete conversations
       Deliverable: `src/app/api/conversations/route.ts`,
         `src/app/api/conversations/[id]/route.ts`
