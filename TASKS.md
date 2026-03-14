@@ -15,6 +15,7 @@
 | M2: Streaming polish | Phase 2 | Cancellation, stall detection, thinking blocks, rich markdown |
 | M3: Observability | Phase 3 | Debug pane shows live metrics, events, system prompt |
 | M4: Full app | Phase 4 | History, settings, welcome page, complete navigation |
+| M5: Server components | Phase 5 | Settings loads instantly; history pane pre-populated |
 
 ---
 
@@ -272,6 +273,47 @@ page, full three-column layout with history pane on the left.
         createSyncHandler(events: SSEEvent[]) factory in src/mocks/handlerFactory.ts.
         Each handler reduces to its event array + a one-liner factory call.
       Depends: T21
+
+---
+
+## Phase 5 — Server Components
+**Milestone M5:** Selective server component adoption. Settings page loads
+instantly (no mount-time fetch); chat page shell pre-fetches conversation
+list server-side. Streaming core remains correctly client-side.
+
+- [x] T31 — docs: Server Components Architecture Audit
+      User value: architectural analysis documenting server/client boundary
+        decisions; interview preparation material
+      Deliverable: `docs/SERVER_COMPONENTS_AUDIT.md`
+      Test: document exists and is consistent with SPEC.md and codebase state
+
+- [ ] T32 — Shared types extraction (`src/lib/shared/types.ts`)
+      User value: eliminates type duplication between server and client code;
+        prerequisite for server component conversions
+      Deliverable: `src/lib/shared/types.ts` with `Settings` and
+        `ConversationSummary` interfaces; updated imports in `db.ts`,
+        `settings/page.tsx`, `HistoryPane.tsx`
+      Test: type-check passes; no duplicate interface definitions remain;
+        existing tests still pass
+
+- [ ] T33 — Settings page server component conversion
+      User value: settings page loads instantly — no mount-time waterfall,
+        no loading spinner, no load error state
+      Deliverable: `settings/page.tsx` becomes server component;
+        new `SettingsForm.tsx` client child receives initial data as props
+      Depends: T32
+      Test: `SettingsForm` renders with prop-based initial data; save flow
+        unchanged; mount-time fetch removed; existing E2E tests pass
+
+- [ ] T34 — Chat page shell server component conversion
+      User value: conversation list is pre-populated on navigation —
+        no flash of empty sidebar
+      Deliverable: `chat/page.tsx` becomes server component;
+        new `ChatShell.tsx` client child receives `initialConversations` prop;
+        `HistoryPane` gains `initialConversations` prop
+      Depends: T32
+      Test: `ChatShell` renders with prop-based initial conversations;
+        HistoryPane still re-fetches on refresh/delete; existing E2E tests pass
 
 ---
 
