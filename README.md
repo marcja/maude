@@ -21,43 +21,65 @@
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Browser                                                │
-│                                                         │
-│  React Components ──► useStream hook ──► sseParser      │
-│  (InputArea,          (fetch, abort,    (ReadableStream  │
-│   MessageList,         state machine)    → SSEEvent[])   │
-│   MessageItem,                                          │
-│   ThinkingBlock,     useStallDetection  useAutoScroll   │
-│   StreamingMarkdown,  (8s timeout)       (scroll mgmt)  │
-│   StallIndicator,                                       │
-│   ObservabilityPane) ObservabilityContext                │
-│                       (event bus for debug pane)         │
-└────────────────────────────┬────────────────────────────┘
-                             │ POST /api/chat (SSE)
-┌────────────────────────────▼────────────────────────────┐
-│  BFF Route (src/app/api/chat/route.ts)                  │
-│                                                         │
-│  • Reads user settings from SQLite                      │
-│  • Composes system prompt via promptBuilder              │
-│  • Streams tokens from Ollama via modelAdapter           │
-│  • Translates Ollama format → Anthropic-style SSE events │
-│  • Detects <think> tags → emits thinking block events    │
-│  • Persists conversation + messages on completion        │
-│  • Propagates abort signal to cancel upstream fetch      │
-└────────────────────────────┬────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────┐
-│  Server layer (src/lib/server/)                         │
-│                                                         │
-│  modelAdapter.ts  — Ollama streaming (only file that    │
-│                     reads OLLAMA_BASE_URL / MODEL_NAME) │
-│  promptBuilder.ts — system prompt composition           │
-│  db.ts            — SQLite prepared statements          │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  Browser                                                   │
+│                                                            │
+│  React Components ──► useStream hook ──► sseParser         │
+│  (InputArea,          (fetch, abort,    (ReadableStream    │
+│   MessageList,         state machine)    → SSEEvent[])     │
+│   MessageItem,                                             │
+│   ThinkingBlock,     useStallDetection  useAutoScroll      │
+│   StreamingMarkdown,  (8s timeout)       (scroll mgmt)     │
+│   StallIndicator,                                          │
+│   HistoryPane,       ObservabilityContext                  │
+│   ObservabilityPane)  (event bus for debug pane)           │
+└─────────────────────────────┬──────────────────────────────┘
+                              │ POST /api/chat (SSE)
+                              │ GET/DELETE /api/conversations
+                              │ GET/PUT /api/settings
+┌─────────────────────────────▼──────────────────────────────┐
+│  BFF Route (src/app/api/chat/route.ts)                     │
+│                                                            │
+│  • Reads user settings from SQLite                         │
+│  • Composes system prompt via promptBuilder                │
+│  • Streams tokens from Ollama via modelAdapter             │
+│  • Translates Ollama format → Anthropic-style SSE events   │
+│  • Detects <think> tags → emits thinking block events      │
+│  • Persists conversation + messages on completion          │
+│  • Propagates abort signal to cancel upstream fetch        │
+└─────────────────────────────┬──────────────────────────────┘
+                              │
+┌─────────────────────────────▼──────────────────────────────┐
+│  Server layer (src/lib/server/)                            │
+│                                                            │
+│  modelAdapter.ts  — Ollama streaming (only file that       │
+│                     reads OLLAMA_BASE_URL / MODEL_NAME)    │
+│  promptBuilder.ts — system prompt composition              │
+│  db.ts            — SQLite prepared statements             │
+│  apiHelpers.ts    — shared JSON response helpers           │
+└────────────────────────────────────────────────────────────┘
 ```
 
 A strict client/server boundary is enforced: no client component may import from `src/lib/server/`. Code is organized under `src/` into `app/` (routes and pages), `components/` (`chat/` and `layout/`), `context/`, `hooks/`, `lib/client/`, `lib/server/`, and `mocks/`.
+
+### Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Welcome page — onboarding entry point with links to chat and settings |
+| `/chat` | Three-column chat — history pane, message stream, observability pane |
+| `/settings` | User settings — name and personalization prompt (persisted to SQLite) |
+
+### API routes
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/chat` | SSE streaming — translates Ollama tokens to Anthropic-style events |
+| `GET /api/conversations` | List all conversations |
+| `GET /api/conversations/[id]` | Load messages for a conversation |
+| `DELETE /api/conversations/[id]` | Delete a conversation and its messages |
+| `GET /api/settings` | Read user settings |
+| `PUT /api/settings` | Update user settings |
 
 ## Approach
 
@@ -69,7 +91,7 @@ A strict client/server boundary is enforced: no client component may import from
 
 **Single-file model adapter.** `modelAdapter.ts` is the only file that reads `OLLAMA_BASE_URL` or `MODEL_NAME`. Swapping LLM backends means editing one file.
 
-**Observability built in.** An `ObservabilityContext` event bus feeds a collapsible debug pane showing live metrics (TTFT, throughput), a timestamped event log, and the system prompt used for each request. The pane sits alongside the chat in a two-column layout.
+**Observability built in.** An `ObservabilityContext` event bus feeds a collapsible debug pane showing live metrics (TTFT, throughput), a timestamped event log, and the system prompt used for each request. The pane sits alongside the chat in a three-column layout (history | chat | debug).
 
 **Test-driven, Ollama-free.** MSW intercepts `/api/chat` at both layers: Jest unit tests mock at the module level; Playwright E2E tests activate MSW handlers in the browser via string keys. No running model is required to develop or test.
 
@@ -116,6 +138,6 @@ pnpm lint:fix
 | M1 | Minimal viable chat — streaming, cancellation, auto-scroll | Done |
 | M2 | Streaming polish — thinking blocks, markdown, stall detection | Done |
 | M3 | Observability — debug pane with metrics, events, system prompt | Done |
-| M4 | Full app — history, settings, welcome page, conversation API | In progress |
+| M4 | Full app — history, settings, welcome page, conversation API | Done |
 
-See [TASKS.md](TASKS.md) for the detailed build plan and [SPEC.md](SPEC.md) for the full specification.
+All milestones are complete. See [TASKS.md](TASKS.md) for the detailed build plan and [SPEC.md](SPEC.md) for the full specification.
