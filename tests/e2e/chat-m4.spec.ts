@@ -30,7 +30,9 @@ test('history pane: load conversation, send message with prior context', async (
   await useMSWHandler(page, 'normal');
 
   // Expand the history pane (starts collapsed by default).
-  await page.getByRole('button', { name: 'Expand history pane' }).click();
+  // aria-label is "Expand sidebar" (generic label on the left pane;
+  // the right debug pane uses "Expand debug pane").
+  await page.getByRole('button', { name: 'Expand sidebar' }).click();
 
   // Wait for conversations to load from the mock API.
   await expect(page.getByText('First conversation')).toBeVisible({ timeout: 5000 });
@@ -86,8 +88,9 @@ test('both panes collapse and expand; center fills available width', async ({ pa
     centerSelector
   );
 
-  // Expand the history pane.
-  await page.getByRole('button', { name: 'Expand history pane' }).click();
+  // Expand the history pane — "Expand sidebar" is the left pane's generic
+  // label; the right debug pane uses "Expand debug pane".
+  await page.getByRole('button', { name: 'Expand sidebar' }).click();
   await expect(page.getByText('First conversation')).toBeVisible({ timeout: 5000 });
 
   // Center should be narrower with history pane expanded.
@@ -98,7 +101,7 @@ test('both panes collapse and expand; center fills available width', async ({ pa
   expect(historyExpandedWidth).toBeLessThan(bothCollapsedWidth);
 
   // Expand the debug pane too.
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
+  await page.getByRole('button', { name: 'Expand debug pane' }).click();
   await expect(page.getByRole('tab', { name: 'Metrics' })).toBeVisible({ timeout: 3000 });
 
   // Center should be even narrower with both panes expanded.
@@ -108,8 +111,9 @@ test('both panes collapse and expand; center fills available width', async ({ pa
   );
   expect(bothExpandedWidth).toBeLessThan(historyExpandedWidth);
 
-  // Collapse the history pane — center should widen.
-  await page.getByRole('button', { name: 'Collapse history pane' }).click();
+  // Collapse the history pane — "Collapse sidebar" mirrors the generic
+  // left-pane label (vs. "Collapse debug pane" on the right).
+  await page.getByRole('button', { name: 'Collapse sidebar' }).click();
   const historyCollapsedWidth = await page.evaluate(
     (sel) => document.querySelector(sel)?.getBoundingClientRect().width ?? 0,
     centerSelector
@@ -117,8 +121,10 @@ test('both panes collapse and expand; center fills available width', async ({ pa
   expect(historyCollapsedWidth).toBeGreaterThan(bothExpandedWidth);
 
   // Collapse the debug pane — center should be back to full width.
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
-  await expect(page.getByText('Debug')).toBeVisible({ timeout: 2000 });
+  await page.getByRole('button', { name: 'Collapse debug pane' }).click();
+  await expect(page.getByRole('button', { name: 'Expand debug pane' })).toBeVisible({
+    timeout: 2000,
+  });
 
   const finalWidth = await page.evaluate(
     (sel) => document.querySelector(sel)?.getBoundingClientRect().width ?? 0,

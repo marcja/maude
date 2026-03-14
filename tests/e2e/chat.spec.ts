@@ -62,15 +62,20 @@ test('cancellation: stop mid-stream shows partial response', async ({ page }) =>
 // Test 3 — Auto-scroll
 // ---------------------------------------------------------------------------
 
-test('auto-scroll: scrolls to bottom; manual scroll shows "↓ New content"', async ({ page }) => {
+test('auto-scroll: scrolls to bottom; manual scroll shows scroll-to-bottom button', async ({
+  page,
+}) => {
   await page.goto('/chat');
 
   // Constrain the message-list height so that even a few tokens overflow it.
   // Without this, the default full-viewport container (~640px) requires ~500
   // tokens before content overflows — the slow handler only sends 100.
   await page.addStyleTag({
-    content: '.message-list { flex: none !important; height: 80px !important; }',
+    content: '[data-testid="message-list"] { flex: none !important; height: 80px !important; }',
   });
+
+  // data-testid selector used for all imperative scroll queries below.
+  const listSel = '[data-testid="message-list"]';
 
   await useMSWHandler(page, 'slow');
 
@@ -82,43 +87,46 @@ test('auto-scroll: scrolls to bottom; manual scroll shows "↓ New content"', as
   // to exceed clientHeight by >50 before "scrolled to top" triggers suspension.
   // With the 80px height, this happens once ~40 tokens have accumulated (~4s).
   await page.waitForFunction(
-    () => {
-      const el = document.querySelector('.message-list');
+    (sel) => {
+      const el = document.querySelector(sel);
       return el !== null && el.scrollHeight - el.clientHeight > 50;
     },
+    listSel,
     { timeout: 15000 }
   );
 
   // Auto-scroll should have kept us at the bottom while tokens streamed in.
-  const isScrolledToBottom = await page.evaluate(() => {
-    const el = document.querySelector('.message-list');
+  const isScrolledToBottom = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
     if (!el) return false;
     return el.scrollHeight - el.scrollTop - el.clientHeight <= 50;
-  });
+  }, listSel);
   expect(isScrolledToBottom).toBe(true);
 
-  // Part B: Scroll up manually → "↓ New content" button should appear.
-  await page.evaluate(() => {
-    const el = document.querySelector('.message-list');
+  // Part B: Scroll up manually → "Scroll to bottom" button should appear.
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
     if (el) {
       el.scrollTop = 0;
       // Dispatch a scroll event so the React onScroll handler fires.
       el.dispatchEvent(new Event('scroll'));
     }
-  });
+  }, listSel);
 
   // React state update is async; wait for the button to appear.
-  await expect(page.getByRole('button', { name: '↓ New content' })).toBeVisible({ timeout: 2000 });
+  await expect(page.getByRole('button', { name: 'Scroll to bottom' })).toBeVisible({
+    timeout: 2000,
+  });
 
   // Part C: Click the button → scrolls back to bottom, button disappears.
-  await page.getByRole('button', { name: '↓ New content' }).click();
-  await expect(page.getByRole('button', { name: '↓ New content' })).not.toBeVisible();
+  await page.getByRole('button', { name: 'Scroll to bottom' }).click();
+  await expect(page.getByRole('button', { name: 'Scroll to bottom' })).not.toBeVisible();
 
-  const isAtBottomAgain = await page.evaluate(() => {
-    const el = document.querySelector('.message-list');
+  const isAtBottomAgain = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
     if (!el) return false;
     return el.scrollHeight - el.scrollTop - el.clientHeight <= 50;
-  });
+  }, listSel);
   expect(isAtBottomAgain).toBe(true);
 
   // Clean up: stop the stream so the test exits promptly.

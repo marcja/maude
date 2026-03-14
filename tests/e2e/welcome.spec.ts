@@ -63,9 +63,9 @@ test('settings injection: set name → chat → System Prompt tab shows name', a
   await page.keyboard.press('Enter');
   await expect(page.getByText('Hello world')).toBeVisible({ timeout: 5000 });
 
-  // Step 3: Open the debug pane and check System Prompt tab for "Alice"
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
-  await page.getByRole('tab', { name: 'System Prompt' }).click();
+  // Step 3: Open the debug pane and check Prompt tab for "Alice"
+  await page.getByRole('button', { name: 'Expand debug pane' }).click();
+  await page.getByRole('tab', { name: 'Prompt' }).click();
 
   await expect(page.locator('[data-testid="system-prompt-pre"]')).toContainText('Alice', {
     timeout: 3000,

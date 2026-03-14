@@ -37,16 +37,16 @@ test('observability pane: two conversations, metrics cards, events, copy event',
   // Wait for streaming to finish (Stop button disappears).
   await expect(page.getByRole('button', { name: 'Stop' })).not.toBeVisible({ timeout: 3000 });
 
-  // Start a new chat and send a second message.
-  // Header has "+ New chat"; InputArea has "New chat" — use the header button.
-  await page.getByRole('button', { name: '+ New chat' }).click();
+  // Start a new chat via the sidebar's "New chat" icon button.
+  // Scoped to <nav> to avoid ambiguity if expanded sidebar also shows "New chat".
+  await page.getByRole('navigation').getByRole('button', { name: 'New chat' }).click();
   await page.fill('[aria-label="Message input"]', 'Hi again');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Hello world')).toBeVisible({ timeout: 5000 });
   await expect(page.getByRole('button', { name: 'Stop' })).not.toBeVisible({ timeout: 3000 });
 
-  // Open the debug pane via gear button.
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
+  // Open the debug pane via the collapsed strip's expand button.
+  await page.getByRole('button', { name: 'Expand debug pane' }).click();
 
   // Metrics tab (default) should show 2 cards — one per conversation.
   await expect(page.locator('[data-testid="metrics-card"]')).toHaveCount(2, { timeout: 3000 });
@@ -74,9 +74,9 @@ test('system prompt tab: displays prompt_used value from SSE stream', async ({ p
   await sendChatMessage(page, 'normal-alice', 'Hello');
   await expect(page.getByText('Hello world')).toBeVisible({ timeout: 5000 });
 
-  // Open debug pane and switch to System Prompt tab.
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
-  await page.getByRole('tab', { name: 'System Prompt' }).click();
+  // Open debug pane and switch to Prompt tab.
+  await page.getByRole('button', { name: 'Expand debug pane' }).click();
+  await page.getByRole('tab', { name: 'Prompt' }).click();
 
   // The pre block should contain Alice from the handler's prompt_used.
   await expect(page.locator('[data-testid="system-prompt-pre"]')).toContainText('Alice', {
@@ -92,7 +92,7 @@ test('pane collapses and expands; center fills width when collapsed', async ({ p
   await page.goto('/chat');
 
   // Open the debug pane.
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
+  await page.getByRole('button', { name: 'Expand debug pane' }).click();
 
   // Pane should be expanded — tab bar visible.
   await expect(page.getByRole('tab', { name: 'Metrics' })).toBeVisible({ timeout: 3000 });
@@ -104,11 +104,13 @@ test('pane collapses and expands; center fills width when collapsed', async ({ p
     centerSelector
   );
 
-  // Collapse the pane via the gear toggle in the chat header.
-  await page.getByRole('button', { name: 'Toggle debug pane' }).click();
+  // Collapse the pane via the collapse button inside the expanded pane header.
+  await page.getByRole('button', { name: 'Collapse debug pane' }).click();
 
-  // Collapsed strip shows vertical "Debug" text.
-  await expect(page.getByText('Debug')).toBeVisible({ timeout: 2000 });
+  // Collapsed strip shows the expand button.
+  await expect(page.getByRole('button', { name: 'Expand debug pane' })).toBeVisible({
+    timeout: 2000,
+  });
 
   // Center column should be wider now that the pane is collapsed.
   const collapsedWidth = await page.evaluate(

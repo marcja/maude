@@ -31,11 +31,12 @@ test('stall detection: "Still working…" appears after 8s silence, Cancel abort
   // stallHandler emits "tok0 " through "tok4 " at 100ms intervals, then pauses 10s.
   await expect(page.getByText(/tok0/)).toBeVisible({ timeout: 5000 });
 
-  // After 8s of silence, useStallDetection fires → StallIndicator appears.
-  await expect(page.locator('.stall-indicator')).toContainText('Still working', { timeout: 15000 });
+  // After 8s of silence, useStallDetection fires → inline stall text appears in footer.
+  await expect(page.getByText('Still working…')).toBeVisible({ timeout: 15000 });
 
-  // Click Cancel on the stall indicator to abort.
-  await page.locator('.stall-indicator').getByRole('button', { name: 'Cancel' }).click();
+  // Click Cancel on the inline stall indicator to abort.
+  // Scoped to <footer> to avoid ambiguity if other Cancel buttons appear.
+  await page.locator('footer').getByRole('button', { name: 'Cancel' }).click();
 
   // Stop button gone (stream aborted).
   await expect(page.getByRole('button', { name: 'Stop' })).not.toBeVisible({ timeout: 2000 });
