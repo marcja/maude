@@ -287,7 +287,11 @@ list server-side. Streaming core remains correctly client-side.
       Deliverable: `docs/SERVER_COMPONENTS_AUDIT.md`
       Test: document exists and is consistent with SPEC.md and codebase state
 
+<<<<<<< HEAD
 - [x] T32 — Shared types extraction (`src/lib/shared/types.ts`)
+=======
+- [ ] T32 — Shared types extraction (`src/lib/shared/types.ts`)
+>>>>>>> origin/main
       User value: eliminates type duplication between server and client code;
         prerequisite for server component conversions
       Deliverable: `src/lib/shared/types.ts` with `Settings` and
@@ -296,7 +300,11 @@ list server-side. Streaming core remains correctly client-side.
       Test: type-check passes; no duplicate interface definitions remain;
         existing tests still pass
 
+<<<<<<< HEAD
 - [x] T33 — Settings page server component conversion
+=======
+- [ ] T33 — Settings page server component conversion
+>>>>>>> origin/main
       User value: settings page loads instantly — no mount-time waterfall,
         no loading spinner, no load error state
       Deliverable: `settings/page.tsx` becomes server component;
@@ -305,7 +313,11 @@ list server-side. Streaming core remains correctly client-side.
       Test: `SettingsForm` renders with prop-based initial data; save flow
         unchanged; mount-time fetch removed; existing E2E tests pass
 
+<<<<<<< HEAD
 - [x] T34 — Chat page shell server component conversion
+=======
+- [ ] T34 — Chat page shell server component conversion
+>>>>>>> origin/main
       User value: conversation list is pre-populated on navigation —
         no flash of empty sidebar
       Deliverable: `chat/page.tsx` becomes server component;
