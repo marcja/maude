@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "NODE_ENV=production next build",
+    "start": "NODE_ENV=production next start",
     "type-check": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
