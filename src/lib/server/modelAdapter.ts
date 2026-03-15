@@ -5,16 +5,22 @@
  * intentionally the ONLY file that reads OLLAMA_BASE_URL or MODEL_NAME —
  * swapping backends (e.g., adding a Docker model runner) is a one-file change.
  *
- * The `server-only` import causes a build-time error if any client component
- * transitively imports this module — enforced by the Next.js bundler.
+ * `import 'server-only'` is a Next.js App Router convention: the `server-only`
+ * package throws a build-time error if any client bundle transitively imports
+ * this module. It is a compile-time firewall enforced by the bundler, not a
+ * runtime check. If you see "server-only" errors during build, trace the
+ * import chain — a client component is importing something that reaches here.
  *
  * The adapter is responsible for:
  *   1. Sending the streaming POST request to Ollama
- *   2. Surfacing connection failures as typed ModelAdapterErrors
- *   3. Yielding raw token strings from the SSE response body
+ *   2. Surfacing connection failures as typed ModelAdapterErrors (not generic
+ *      Errors), so the BFF route can map error codes to specific SSE events
+ *   3. Yielding raw token strings via an async generator — the adapter does
+ *      NOT parse thinking tags or emit SSE events. It is a thin I/O wrapper;
+ *      the BFF route (route.ts) owns all event semantics
  *
- * Thinking-tag detection (<think> / </think>) is intentionally NOT done here —
- * that logic lives in the BFF route so the adapter stays a thin I/O wrapper.
+ * If you need to add thinking-tag logic, it belongs in route.ts, not here.
+ * The adapter yields raw strings so the BFF controls the full event schema.
  */
 
 import 'server-only';

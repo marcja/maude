@@ -3,20 +3,35 @@
 /**
  * src/context/ObservabilityContext.tsx
  *
- * In-memory event bus for the observability/debug pane. Any component can emit
- * events and metrics via the context without coupling to the pane UI.
+ * In-memory event bus for the observability/debug pane. Components emit events
+ * (via useObservability().addEvent) and one consumer (the debug pane) displays
+ * them. This decouples observability from streaming logic — useStream does not
+ * need to know about the debug pane; it just fires onEvent callbacks.
+ *
+ * You might expect a pub/sub library or external state store here — the React
+ * context IS the event bus. No additional infrastructure is needed.
  *
  * Design decisions:
- * - Single context with useReducer rather than split contexts or external store.
- *   Only one consumer (the debug pane) needs all three slices, so split contexts
- *   save nothing. External store (useSyncExternalStore) would introduce a pattern
- *   not used elsewhere in this codebase.
- * - Reducer is exported separately so it can be unit-tested as a pure function
- *   without rendering React components.
- * - ObservabilityEvent.type is string (not a union) because the context doesn't
- *   enforce the event vocabulary — it just stores events. T19 emits specific types.
- * - ObservabilityEvent.payload is a pre-formatted string so the Events tab can
- *   display it directly without formatting logic at render time.
+ *
+ * useReducer instead of useState: the state has three independently-updating
+ * slices (events, requests, systemPrompt). useReducer makes update logic a
+ * pure function, testable without rendering React. The reducer is exported
+ * so tests verify state transitions by calling observabilityReducer() directly.
+ *
+ * Single context, not split: only one consumer (the debug pane) needs all
+ * three slices, so splitting into separate contexts saves nothing.
+ *
+ * No external store: useSyncExternalStore would introduce a pattern not used
+ * anywhere else in this codebase. The context is sufficient.
+ *
+ * Metrics are computed in the reducer, not in the pane component: centralizing
+ * update logic keeps the pane as a pure display component with no derived state.
+ *
+ * ObservabilityEvent.type is string (not a union) because the context does not
+ * enforce the event vocabulary — it stores anything. Emitters define the types.
+ *
+ * ObservabilityEvent.payload is a pre-formatted string so the Events tab can
+ * render it directly without formatting logic.
  */
 
 import { type ReactNode, createContext, useContext, useMemo, useReducer } from 'react';

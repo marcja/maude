@@ -19,9 +19,19 @@
  * only the fact that it changed drives a scroll. This matches the SSE model
  * where each token appends to the accumulated string.
  *
- * requestAnimationFrame coalescing: multiple tokens arriving within a single
- * display frame (~16ms at 60Hz) would each trigger a synchronous layout
- * reflow via scrollTop assignment. rAF batches them into one scroll per frame.
+ * requestAnimationFrame coalescing: multiple tokens can arrive within a single
+ * display frame (~16ms at 60Hz). Without rAF, each token would trigger a
+ * synchronous `scrollTop` assignment, forcing the browser to recalculate
+ * layout ("layout thrashing") — an expensive operation that compounds at
+ * 30-50 tokens/sec. rAF batches all pending scrolls into one update aligned
+ * with the browser's paint cycle, so only one layout reflow occurs per frame.
+ * Do NOT replace rAF with throttle/debounce — rAF is the correct primitive
+ * because it synchronizes with the browser's actual repaint schedule rather
+ * than using an arbitrary time interval.
+ *
+ * Scroll suspension threshold (50px) is intentionally generous — not pixel-
+ * perfect — to avoid frustrating edge cases where a few pixels of drift
+ * prevent auto-scroll from resuming.
  */
 
 import { type RefObject, useEffect, useState } from 'react';

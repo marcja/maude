@@ -5,13 +5,28 @@
  * SSE response via parseSSEStream, and exposes accumulated state to components.
  *
  * Design decisions:
- * - AbortController stored in a ref, not state, so stop() never triggers a
- *   re-render and always refers to the latest in-flight controller.
- * - Each event type maps to a fine-grained setState call so React can batch
- *   contiguous delta events in concurrent mode (future-proofing with no cost).
- * - tokensAccRef/ttftRef mirror accumulated values synchronously so onComplete
- *   can receive the final result without depending on React state (which is
- *   async due to startTransition).
+ *
+ * AbortController in a ref, not state: stop() must abort the current request
+ * without triggering a re-render, and must always reference the latest
+ * controller (not a stale closure). The abort flow is: AbortController.abort()
+ * -> fetch rejects with AbortError -> catch block sets isStreaming: false ->
+ * onComplete fires with partial content so the user sees what arrived.
+ *
+ * startTransition wraps token-delta state updates: this tells React that
+ * rendering new tokens is lower priority than user interactions (clicking Stop,
+ * scrolling, typing). Without it, rapid token arrival (30-50/sec) can block
+ * input responsiveness. This is NOT the navigation use of startTransition —
+ * it's a streaming content priority use case.
+ *
+ * Ref accumulators (tokensAccRef, ttftRef, etc.) mirror state values: because
+ * startTransition defers state updates, reading React state immediately after
+ * setState returns the OLD value. Refs are synchronous and always current, so
+ * onComplete receives accurate final values. Both state AND refs track the
+ * same data — state drives React rendering, refs enable synchronous reads.
+ *
+ * The `for await...of` loop over parseSSEStream's async generator is the
+ * core consumption pattern: each iteration yields one typed SSE event, and
+ * a switch/case dispatches it to the appropriate state update.
  */
 
 import { startTransition, useRef, useState } from 'react';

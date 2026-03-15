@@ -2,11 +2,25 @@
  * src/lib/client/events.ts
  *
  * Discriminated union of all SSE event types emitted by the BFF /api/chat route.
- * The BFF translates Ollama's OpenAI-compatible format INTO this Anthropic-style
- * schema, so client code never knows which backend is in use.
+ * This is the API contract between the BFF (producer) and all client-side
+ * consumers (sseParser, useStream, ObservabilityContext).
  *
- * Every client-side module that consumes the stream (sseParser, useStream,
- * ObservabilityContext) imports from here — one authoritative source of truth.
+ * The BFF translates Ollama's OpenAI-compatible format INTO this Anthropic-
+ * inspired schema, so client code never knows which backend is in use. The
+ * event names (message_start, content_block_delta, etc.) are inspired by the
+ * Anthropic Messages API but simplified — they do not match a real Anthropic
+ * API exactly.
+ *
+ * Adding a new event type requires changes in four places:
+ *   1. This file — add the new variant to the SSEEvent union
+ *   2. route.ts — emit the new event in the BFF streaming logic
+ *   3. sseParser.ts — no change needed (it passes through any object with a
+ *      string `type` field)
+ *   4. useStream.ts — handle the new event in the switch/case consumer
+ *
+ * The discriminated union enables exhaustive switch statements in consumers:
+ * TypeScript will flag unhandled event types at compile time if a new variant
+ * is added here but not handled in useStream's switch/case.
  */
 
 export type SSEEvent =

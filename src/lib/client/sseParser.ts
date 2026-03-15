@@ -2,15 +2,30 @@
  * src/lib/client/sseParser.ts
  *
  * Parses the Server-Sent Events stream emitted by the BFF /api/chat route.
- * Accepts `response.body` directly and yields strongly-typed SSEEvent objects.
+ * Accepts `response.body` (a ReadableStream<Uint8Array>, not a string stream)
+ * and yields strongly-typed SSEEvent objects via an async generator.
  *
  * This is a pure client-side utility — it has no knowledge of Ollama, no
  * imports from src/lib/server/, and no side-effects beyond reading the stream.
  *
- * The parsing strategy mirrors the tokenStream function in modelAdapter.ts:
- * accumulate a text buffer across reads, split on newlines, process complete
- * lines. This correctly handles events whose JSON payload arrives split across
- * multiple chunk boundaries.
+ * Why an async generator (`async function*`) instead of callbacks or EventEmitter:
+ *   Generators compose naturally with `for await...of`, so the consumer
+ *   (useStream) is a simple loop rather than callback management. The generator
+ *   returns naturally when the stream ends — it does not throw on completion.
+ *
+ * Chunk boundary handling:
+ *   SSE events can arrive split across `reader.read()` calls. The buffer
+ *   accumulates partial lines and only processes complete newline-terminated
+ *   lines. The double newline (`\n\n`) is SSE protocol — it separates events.
+ *   This parser splits on single `\n` and skips blank lines, which achieves
+ *   the same result.
+ *
+ * UTF-8 decoding:
+ *   TextDecoder is constructed without `{ stream: true }` on the constructor,
+ *   but `decode()` is called with `{ stream: true }` on each chunk. This tells
+ *   the decoder to hold incomplete multi-byte sequences across calls — without
+ *   this flag, a multi-byte character (e.g., emoji) split across chunks would
+ *   produce garbled output.
  */
 
 import type { SSEEvent } from './events';

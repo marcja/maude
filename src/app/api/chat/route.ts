@@ -4,15 +4,34 @@
  * BFF (Backend-for-Frontend) POST handler for /api/chat.
  *
  * The client never calls Ollama directly. This route:
- *   1. Reads user settings from SQLite
- *   2. Composes a system prompt via promptBuilder
- *   3. Streams tokens from the model adapter
- *   4. Translates Ollama's OpenAI-compatible format into the app's
- *      Anthropic-style SSE schema (see src/lib/client/events.ts)
- *   5. Emits events as a Server-Sent Events response body
+ *   1. Validates the request body (messages array, optional conversationId)
+ *   2. Reads user settings from SQLite and composes a system prompt
+ *   3. Streams tokens from the model adapter (an async iterable of strings)
+ *   4. Runs a thinking-tag state machine to split `<think>`/`</think>` blocks
+ *      from visible content — this lives here (not in the model adapter or the
+ *      client) because the BFF is the only layer that sees raw tokens AND
+ *      controls the Anthropic-style SSE event schema
+ *   5. Persists the completed conversation and messages to SQLite
+ *   6. Emits the response as Server-Sent Events (`data: <json>\n\n`)
  *
- * T05 scope: happy path only. Abort propagation and DB persistence are
- * wired in T09.
+ * Why HTTP 200 is always returned — even for model errors:
+ *   SSE requires the HTTP response to start (status line + headers) before the
+ *   first event is written. If the model fails mid-stream, the 200 is already
+ *   committed — changing to 500 is impossible. So errors are communicated as
+ *   typed SSE events (`{ type: 'error', ... }`) within the stream body. The
+ *   one exception is request validation errors, which return 400 with a JSON
+ *   body because the response hasn't started yet.
+ *
+ * Why ReadableStream with a `start` controller instead of TransformStream:
+ *   The `start` callback keeps the entire streaming pipeline — token iteration,
+ *   thinking-tag parsing, SSE encoding, DB persistence, error handling — in one
+ *   visible function body. TransformStream would split this across transform()
+ *   and flush() callbacks, obscuring the sequential flow.
+ *
+ * Why SSE is built manually (`data: ${JSON.stringify(event)}\n\n`):
+ *   The format is two lines of code. A library would add a dependency for no
+ *   functional benefit and would obscure the wire format, which is pedagogically
+ *   valuable to see directly.
  */
 
 import { randomUUID } from 'node:crypto';

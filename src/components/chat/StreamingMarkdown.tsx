@@ -4,22 +4,35 @@
  * src/components/chat/StreamingMarkdown.tsx
  *
  * Renders assistant response content as Markdown during and after streaming.
- * Replaces the plain-text <p> in MessageItem (T07) with rich formatting.
+ *
+ * Render frequency: this component re-renders on every SSE content_block_delta
+ * event — potentially 30-50 times per second during streaming. Performance
+ * depends on two things: react-markdown's incremental parsing, and stable
+ * references for the `components` and `remarkPlugins` props.
  *
  * Design decisions:
  *
+ * Stable `components` overrides (COMPONENTS) and plugin array (REMARK_PLUGINS)
+ * are hoisted to module scope, outside the component. If these were inline
+ * object literals, every re-render would create new references, causing
+ * react-markdown to re-create all its internal renderers — an expensive
+ * reconciliation hit at 30-50 renders/sec. This is the single most important
+ * performance consideration in this file.
+ *
  * react-markdown is tolerant of partial/incomplete Markdown by design: its
  * parser gracefully handles unclosed fences and incomplete markup by treating
- * them as plain text. No try/catch or partial-buffer management is needed —
- * the library handles the streaming incremental-input case correctly.
+ * them as plain text. No try/catch or partial-buffer management is needed.
  *
- * remark-gfm adds GitHub-Flavored Markdown: tables, strikethrough, task
- * lists, and autolinks. This matches the most common assistant output format.
+ * Why not dangerouslySetInnerHTML: react-markdown parses Markdown into a React
+ * element tree, preserving React's virtual DOM reconciliation. Raw HTML would
+ * bypass the VDOM and break on partial streaming input (unclosed tags would
+ * corrupt the DOM).
  *
- * Prose classes applied inline via components prop rather than a global
- * stylesheet: keeps the component self-contained and easy to test. The
- * minimal class set (prose-like sizing, code background) avoids a full
- * @tailwindcss/typography dependency.
+ * remark-gfm adds GitHub-Flavored Markdown (tables, strikethrough, task lists,
+ * autolinks) to match common assistant output format.
+ *
+ * Prose classes are applied inline via the components prop rather than a global
+ * stylesheet, keeping the component self-contained.
  */
 
 import ReactMarkdown from 'react-markdown';
