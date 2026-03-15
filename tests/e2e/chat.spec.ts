@@ -1,7 +1,8 @@
 /**
  * tests/e2e/chat.spec.ts
  *
- * Playwright M1 test suite — proves the minimal chat page (T10) works end-to-end.
+ * Chat core E2E tests — happy-path messaging, cancellation, auto-scroll,
+ * and error display.
  *
  * MSW approach: each test navigates to /chat, waits for the MSW service worker
  * to mount, then activates a specific handler via window.__msw.use(key) before

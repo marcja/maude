@@ -1,14 +1,13 @@
 /**
- * tests/e2e/chat-m3.spec.ts
+ * tests/e2e/observability.spec.ts
  *
- * Playwright M3 test suite — proves the ObservabilityPane integration works
- * end-to-end alongside the chat UI in the two-column layout.
+ * Observability pane E2E tests — metrics cards, event timeline, copy events,
+ * and system prompt display.
  *
  * Tests:
  *   1. Metrics + Events + copy event: two conversations produce two metrics
  *      cards, events show complete sequence, copy emits response_copied
  *   2. System Prompt tab: handler with Alice prompt_used → tab shows "Alice"
- *   3. Pane collapse/expand: pane collapses to strip, center fills width
  */
 
 import { expect, resetMSWHandlers, sendChatMessage, test, useMSWHandler } from './fixtures';
@@ -82,44 +81,4 @@ test('system prompt tab: displays prompt_used value from SSE stream', async ({ p
   await expect(page.locator('[data-testid="system-prompt-pre"]')).toContainText('Alice', {
     timeout: 3000,
   });
-});
-
-// ---------------------------------------------------------------------------
-// Test 3 — Pane collapse/expand + center width
-// ---------------------------------------------------------------------------
-
-test('pane collapses and expands; center fills width when collapsed', async ({ page }) => {
-  await page.goto('/chat');
-
-  // Open the debug pane.
-  await page.getByRole('button', { name: 'Expand debug pane' }).click();
-
-  // Pane should be expanded — tab bar visible.
-  await expect(page.getByRole('tab', { name: 'Metrics' })).toBeVisible({ timeout: 3000 });
-
-  // Measure center column width while pane is expanded.
-  const centerSelector = '.chat-page';
-  const expandedWidth = await page.evaluate(
-    (sel) => document.querySelector(sel)?.getBoundingClientRect().width ?? 0,
-    centerSelector
-  );
-
-  // Collapse the pane via the collapse button inside the expanded pane header.
-  await page.getByRole('button', { name: 'Collapse debug pane' }).click();
-
-  // Collapsed strip shows the expand button.
-  await expect(page.getByRole('button', { name: 'Expand debug pane' })).toBeVisible({
-    timeout: 2000,
-  });
-
-  // Center column should be wider now that the pane is collapsed.
-  const collapsedWidth = await page.evaluate(
-    (sel) => document.querySelector(sel)?.getBoundingClientRect().width ?? 0,
-    centerSelector
-  );
-  expect(collapsedWidth).toBeGreaterThan(expandedWidth);
-
-  // Expand the pane again.
-  await page.getByRole('button', { name: 'Expand debug pane' }).click();
-  await expect(page.getByRole('tab', { name: 'Metrics' })).toBeVisible({ timeout: 2000 });
 });

@@ -1,7 +1,8 @@
 /**
- * tests/e2e/chat-m2.spec.ts
+ * tests/e2e/streaming.spec.ts
  *
- * Playwright M2 test suite — proves Phase 2 streaming polish works end-to-end.
+ * Streaming UX E2E tests — stall detection, mid-stream errors, thinking
+ * blocks, and markdown rendering.
  *
  * Tests:
  *   1. Stall detection: "Still working…" appears after 8s silence, Cancel aborts
