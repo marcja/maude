@@ -112,7 +112,7 @@ describe('POST /api/settings — happy path', () => {
 describe('POST /api/settings — validation', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('rejects non-object body', async () => {
+  it('returns 400 when the request body is not a JSON object', async () => {
     const request = jsonRequest('POST', 'not-an-object');
 
     const response = await POST(request);
@@ -121,7 +121,7 @@ describe('POST /api/settings — validation', () => {
     expect(mockUpsertSettings).not.toHaveBeenCalled();
   });
 
-  it('rejects missing name field', async () => {
+  it('returns 400 when the name field is missing from the request body', async () => {
     const request = jsonRequest('POST', { personalizationPrompt: 'prompt' });
 
     const response = await POST(request);
@@ -130,7 +130,7 @@ describe('POST /api/settings — validation', () => {
     expect(mockUpsertSettings).not.toHaveBeenCalled();
   });
 
-  it('rejects missing personalizationPrompt field', async () => {
+  it('returns 400 when the personalizationPrompt field is missing', async () => {
     const request = jsonRequest('POST', { name: 'Alice' });
 
     const response = await POST(request);
@@ -139,7 +139,7 @@ describe('POST /api/settings — validation', () => {
     expect(mockUpsertSettings).not.toHaveBeenCalled();
   });
 
-  it('rejects non-string name', async () => {
+  it('returns 400 when name is a non-string value', async () => {
     const request = jsonRequest('POST', { name: 123, personalizationPrompt: '' });
 
     const response = await POST(request);
@@ -148,7 +148,7 @@ describe('POST /api/settings — validation', () => {
     expect(mockUpsertSettings).not.toHaveBeenCalled();
   });
 
-  it('rejects non-string personalizationPrompt', async () => {
+  it('returns 400 when personalizationPrompt is a non-string value', async () => {
     const request = jsonRequest('POST', { name: '', personalizationPrompt: true });
 
     const response = await POST(request);

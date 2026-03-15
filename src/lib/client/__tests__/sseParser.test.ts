@@ -54,7 +54,7 @@ async function collect(body: ReadableStream<Uint8Array>): Promise<SSEEvent[]> {
 // ---------------------------------------------------------------------------
 
 describe('parseSSEStream', () => {
-  it('parses a single-event chunk', async () => {
+  it('yields a parsed event when a single SSE data line arrives in one chunk', async () => {
     const body = makeStream([
       sseChunk('data: {"type":"content_block_delta","delta":{"text":"hello"}}'),
     ]);
@@ -62,7 +62,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ type: 'content_block_delta', delta: { text: 'hello' } }]);
   });
 
-  it('parses multiple events from one chunk', async () => {
+  it('yields multiple events when several SSE data lines arrive in a single chunk', async () => {
     const body = makeStream([
       sseChunk(
         'data: {"type":"content_block_delta","delta":{"text":"foo"}}',
@@ -76,7 +76,7 @@ describe('parseSSEStream', () => {
     ]);
   });
 
-  it('reassembles an event split across two chunks', async () => {
+  it('reassembles and yields an event when the JSON payload is split across two chunks', async () => {
     // Split the JSON payload mid-way across a chunk boundary.
     const full = 'data: {"type":"content_block_delta","delta":{"text":"split"}}';
     const mid = Math.floor(full.length / 2);
@@ -114,7 +114,7 @@ describe('parseSSEStream', () => {
     expect(events[0].type).toBe('message_stop');
   });
 
-  it('yields error events', async () => {
+  it('yields error events with their message and code fields intact', async () => {
     const body = makeStream([
       sseChunk('data: {"type":"error","error":{"message":"model offline","code":"stream_error"}}'),
     ]);

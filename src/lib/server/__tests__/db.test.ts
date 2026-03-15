@@ -19,7 +19,7 @@ function freshDb(): DatabaseInstance {
 }
 
 describe('migration', () => {
-  it('creates all three tables', () => {
+  it('creates conversations, messages, and settings tables on database initialization', () => {
     const { db } = freshDb();
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
@@ -32,19 +32,19 @@ describe('migration', () => {
 });
 
 describe('settings', () => {
-  it('inserts default settings on migration', () => {
+  it('populates empty default settings on initial migration', () => {
     const { getSettings } = freshDb();
     const settings = getSettings();
     expect(settings).toEqual({ name: '', personalizationPrompt: '' });
   });
 
-  it('round-trips updated settings', () => {
+  it('persists and retrieves updated settings after upsert', () => {
     const { getSettings, upsertSettings } = freshDb();
     upsertSettings({ name: 'Alice', personalizationPrompt: 'Be concise.' });
     expect(getSettings()).toEqual({ name: 'Alice', personalizationPrompt: 'Be concise.' });
   });
 
-  it('allows partial updates (only name)', () => {
+  it('accepts a partial update that sets only the name field', () => {
     const { getSettings, upsertSettings } = freshDb();
     upsertSettings({ name: 'Bob', personalizationPrompt: '' });
     expect(getSettings().name).toBe('Bob');
@@ -52,7 +52,7 @@ describe('settings', () => {
 });
 
 describe('conversations', () => {
-  it('creates and retrieves a conversation', () => {
+  it('stores and retrieves a conversation by ID', () => {
     const { createConversation, getConversation } = freshDb();
     const now = Date.now();
     createConversation('conv-1', 'My first chat', now);
@@ -69,19 +69,19 @@ describe('conversations', () => {
     expect(list[1].id).toBe('conv-a');
   });
 
-  it('returns undefined for a missing conversation', () => {
+  it('returns undefined when the requested conversation does not exist', () => {
     const { getConversation } = freshDb();
     expect(getConversation('nonexistent')).toBeUndefined();
   });
 
-  it('deletes a conversation', () => {
+  it('removes a conversation so it is no longer retrievable', () => {
     const { createConversation, deleteConversation, getConversation } = freshDb();
     createConversation('conv-del', 'To delete', Date.now());
     deleteConversation('conv-del');
     expect(getConversation('conv-del')).toBeUndefined();
   });
 
-  it('updates conversation fields', () => {
+  it('updates title and timestamp when updateConversation is called with new values', () => {
     const { createConversation, updateConversation, getConversation } = freshDb();
     const now = Date.now();
     createConversation('conv-upd', 'Old title', now);
@@ -103,7 +103,7 @@ describe('conversations', () => {
 });
 
 describe('messages', () => {
-  it('inserts and retrieves messages in order', () => {
+  it('returns messages in insertion order for a given conversation', () => {
     const { createConversation, insertMessage, getMessages } = freshDb();
     createConversation('conv-msg', 'Chat', Date.now());
     insertMessage({
@@ -128,7 +128,7 @@ describe('messages', () => {
     expect(msgs[1].id).toBe('msg-2');
   });
 
-  it('stores thinking content when provided', () => {
+  it('persists the thinking field when an assistant message includes reasoning', () => {
     const { createConversation, insertMessage, getMessages } = freshDb();
     createConversation('conv-think', 'Think', Date.now());
     insertMessage({
@@ -142,7 +142,7 @@ describe('messages', () => {
     expect(getMessages('conv-think')[0].thinking).toBe('Let me reason…');
   });
 
-  it('cascade-deletes messages when conversation is deleted', () => {
+  it('removes all associated messages when a conversation is deleted', () => {
     const { createConversation, insertMessage, deleteConversation, getMessages } = freshDb();
     createConversation('conv-cas', 'Cascade', Date.now());
     insertMessage({

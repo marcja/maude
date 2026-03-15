@@ -17,12 +17,12 @@ import WelcomePage from '../page';
 // ---------------------------------------------------------------------------
 
 describe('WelcomePage — content', () => {
-  it('displays the app name', () => {
+  it('displays "Maude" as the app name on the welcome page', () => {
     render(<WelcomePage />);
     expect(screen.getByText('Maude')).toBeInTheDocument();
   });
 
-  it('displays a one-line description', () => {
+  it('displays a description identifying the app as a local AI chat assistant', () => {
     render(<WelcomePage />);
     // The description should convey what Maude is — a local AI chat app
     expect(screen.getByText(/local AI chat assistant/i)).toBeInTheDocument();

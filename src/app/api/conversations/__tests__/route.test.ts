@@ -54,7 +54,7 @@ describe('GET /api/conversations', () => {
     expect(body[1].id).toBe('c2');
   });
 
-  it('returns proper Content-Type header', async () => {
+  it('sets the Content-Type header to application/json', async () => {
     const response = GET();
 
     expect(response.headers.get('Content-Type')).toBe('application/json');

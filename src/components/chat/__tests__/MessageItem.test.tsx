@@ -19,23 +19,23 @@ import { MessageItem } from '../MessageItem';
 // ---------------------------------------------------------------------------
 
 describe('MessageItem — user message', () => {
-  it('renders the message content', () => {
+  it('displays the text content of a user message', () => {
     render(<MessageItem sender="user" content="Hello there" />);
     expect(screen.getByText('Hello there')).toBeInTheDocument();
   });
 
-  it('does not render a TTFT badge', () => {
+  it('never shows a TTFT badge, even when a ttft value is provided', () => {
     render(<MessageItem sender="user" content="Hi" ttft={100} />);
     // Even if ttft is passed, user messages do not display it
     expect(screen.queryByText(/↯/)).not.toBeInTheDocument();
   });
 
-  it('does not render a copy button', () => {
+  it('does not offer a copy button for user messages', () => {
     render(<MessageItem sender="user" content="Hi" />);
     expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
   });
 
-  it('does not show a streaming spinner', () => {
+  it('does not display a streaming indicator for user messages', () => {
     render(<MessageItem sender="user" content="Hi" isStreaming={true} />);
     expect(screen.queryByLabelText('Streaming indicator')).not.toBeInTheDocument();
   });
@@ -51,7 +51,7 @@ describe('MessageItem — assistant message TTFT badge', () => {
     expect(screen.getByText('↯ 312ms')).toBeInTheDocument();
   });
 
-  it('rounds fractional ttft values', () => {
+  it('rounds fractional ttft values to the nearest integer in the badge', () => {
     render(<MessageItem sender="assistant" content="Hello" ttft={312.7} />);
     expect(screen.getByText('↯ 313ms')).toBeInTheDocument();
   });

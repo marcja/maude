@@ -13,16 +13,16 @@ import { BASE_SYSTEM_PROMPT, buildSystemPrompt } from '../promptBuilder';
 const EMPTY: UserSettings = { name: '', personalizationPrompt: '' };
 
 describe('buildSystemPrompt', () => {
-  it('returns base prompt unchanged when settings are empty', () => {
+  it('returns only the base prompt when both name and personalization are empty', () => {
     expect(buildSystemPrompt(EMPTY)).toBe(BASE_SYSTEM_PROMPT);
   });
 
-  it('injects name when provided', () => {
+  it('includes the user name in the prompt when a name is provided', () => {
     const result = buildSystemPrompt({ name: 'Alice', personalizationPrompt: '' });
     expect(result).toContain("The user's name is Alice.");
   });
 
-  it('appends personalization prompt when provided', () => {
+  it('appends the personalization prompt after the base prompt when provided', () => {
     const custom = 'Always respond in bullet points.';
     const result = buildSystemPrompt({ name: '', personalizationPrompt: custom });
     expect(result).toContain(custom);

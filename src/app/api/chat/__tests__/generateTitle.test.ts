@@ -25,7 +25,7 @@ jest.mock('../../../../lib/server/promptBuilder', () => ({
 import { generateTitle } from '../route';
 
 describe('generateTitle', () => {
-  it('returns short messages as-is', () => {
+  it('returns the full text when the message is under 50 characters', () => {
     expect(generateTitle('How do I set up Docker?')).toBe('How do I set up Docker?');
   });
 
@@ -50,7 +50,7 @@ describe('generateTitle', () => {
     expect(result).toBe('I need to understand how containerization works\u2026');
   });
 
-  it('hard truncates with ellipsis when no space found', () => {
+  it('hard-truncates at 49 characters with ellipsis when the text contains no spaces', () => {
     const noSpaces = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const result = generateTitle(noSpaces);
     expect(result.length).toBeLessThanOrEqual(50);

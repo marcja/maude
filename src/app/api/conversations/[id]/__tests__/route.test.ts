@@ -51,7 +51,7 @@ const FIXTURE_CONVERSATION: ConversationRow = {
 describe('GET /api/conversations/[id]', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('returns messages for an existing conversation', async () => {
+  it('returns the full message list when the conversation exists', async () => {
     const messages: MessageRow[] = [
       {
         id: 'm1',
@@ -98,7 +98,7 @@ describe('GET /api/conversations/[id]', () => {
     expect(body.error).toBeDefined();
   });
 
-  it('does not call getMessages when conversation is missing', async () => {
+  it('avoids querying messages when the conversation does not exist', async () => {
     mockGetConversation.mockReturnValueOnce(undefined);
 
     await GET(new Request('http://localhost/api/conversations/missing'), routeContext('missing'));
@@ -114,7 +114,7 @@ describe('GET /api/conversations/[id]', () => {
 describe('DELETE /api/conversations/[id]', () => {
   afterEach(() => jest.clearAllMocks());
 
-  it('deletes an existing conversation and returns 204 with empty body', async () => {
+  it('removes the conversation and returns 204 with an empty body', async () => {
     mockGetConversation.mockReturnValueOnce(FIXTURE_CONVERSATION);
 
     const response = await DELETE(

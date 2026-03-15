@@ -10,7 +10,7 @@ import type { SSEEvent } from '../../lib/client/events';
 import { delay, encodeEvent } from '../utils';
 
 describe('encodeEvent', () => {
-  it('serialises an SSE event to the "data: <json>\\n\\n" format', () => {
+  it('formats an SSE event as a "data: <json>\\n\\n" string for streaming', () => {
     const event: SSEEvent = { type: 'content_block_start' };
     expect(encodeEvent(event)).toBe(`data: ${JSON.stringify(event)}\n\n`);
   });

@@ -193,7 +193,7 @@ describe('streamCompletion — model_unreachable', () => {
     ).rejects.toMatchObject({ code: 'model_unreachable' });
   });
 
-  it('error is instance of ModelAdapterError', async () => {
+  it('throws an instance of ModelAdapterError when fetch rejects', async () => {
     jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network error'));
 
     let caught: unknown;

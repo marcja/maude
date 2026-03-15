@@ -74,7 +74,7 @@ function makeRequest(overrides: Partial<RequestMetrics> = {}): RequestMetrics {
 // ---------------------------------------------------------------------------
 
 describe('observabilityReducer', () => {
-  it('ADD_EVENT prepends an event and assigns an id', () => {
+  it('prepends a new event with an assigned ID when ADD_EVENT is dispatched', () => {
     const state = observabilityReducer(INITIAL_OBSERVABILITY_STATE, {
       type: 'ADD_EVENT',
       event: {
@@ -95,7 +95,7 @@ describe('observabilityReducer', () => {
     });
   });
 
-  it('ADD_EVENT caps events at 200, dropping the oldest', () => {
+  it('caps the event list at 200 entries, dropping the oldest when exceeded', () => {
     let state: ObservabilityState = INITIAL_OBSERVABILITY_STATE;
     for (let i = 0; i < 200; i++) {
       state = observabilityReducer(state, {
@@ -127,7 +127,7 @@ describe('observabilityReducer', () => {
     expect(state.events[199].payload).toBe('event-1');
   });
 
-  it('START_REQUEST prepends a request', () => {
+  it('prepends a new request entry when START_REQUEST is dispatched', () => {
     const request = makeRequest({ id: 'req-1' });
     const state = observabilityReducer(INITIAL_OBSERVABILITY_STATE, {
       type: 'START_REQUEST',
@@ -138,7 +138,7 @@ describe('observabilityReducer', () => {
     expect(state.requests[0]).toEqual(request);
   });
 
-  it('START_REQUEST caps requests at 10, dropping the oldest', () => {
+  it('caps the request list at 10 entries, dropping the oldest when exceeded', () => {
     let state: ObservabilityState = INITIAL_OBSERVABILITY_STATE;
     for (let i = 0; i < 10; i++) {
       state = observabilityReducer(state, {
@@ -159,7 +159,7 @@ describe('observabilityReducer', () => {
     expect(state.requests[9].id).toBe('req-1');
   });
 
-  it('UPDATE_REQUEST merges partial updates into the matching request', () => {
+  it('merges partial field updates into the matching request when UPDATE_REQUEST is dispatched', () => {
     const request = makeRequest({ id: 'req-1', status: 'streaming' });
     let state = observabilityReducer(INITIAL_OBSERVABILITY_STATE, {
       type: 'START_REQUEST',
@@ -180,7 +180,7 @@ describe('observabilityReducer', () => {
     });
   });
 
-  it('UPDATE_REQUEST returns the same state object when id is not found', () => {
+  it('returns the same state reference when UPDATE_REQUEST targets a nonexistent ID', () => {
     const request = makeRequest({ id: 'req-1' });
     const prevState = { ...INITIAL_OBSERVABILITY_STATE, requests: [request] };
     const nextState = observabilityReducer(prevState, {
@@ -193,7 +193,7 @@ describe('observabilityReducer', () => {
     expect(nextState).toBe(prevState);
   });
 
-  it('SET_SYSTEM_PROMPT replaces the prompt value', () => {
+  it('replaces the system prompt value when SET_SYSTEM_PROMPT is dispatched', () => {
     const state = observabilityReducer(INITIAL_OBSERVABILITY_STATE, {
       type: 'SET_SYSTEM_PROMPT',
       prompt: 'You are a helpful assistant.',
@@ -202,7 +202,7 @@ describe('observabilityReducer', () => {
     expect(state.systemPrompt).toBe('You are a helpful assistant.');
   });
 
-  it('CLEAR resets to initial state', () => {
+  it('resets all state to initial values when CLEAR is dispatched', () => {
     let state: ObservabilityState = INITIAL_OBSERVABILITY_STATE;
     state = observabilityReducer(state, {
       type: 'ADD_EVENT',
@@ -249,7 +249,7 @@ describe('ObservabilityProvider + useObservability', () => {
     spy.mockRestore();
   });
 
-  it('addEvent dispatches and event appears in state.events', () => {
+  it('makes an added event visible in state.events via the provider', () => {
     const { result } = renderHook(() => useObservability(), { wrapper });
 
     act(() => {
@@ -266,7 +266,7 @@ describe('ObservabilityProvider + useObservability', () => {
     expect(result.current.state.events[0].payload).toBe('42 chars');
   });
 
-  it('startRequest + updateRequest lifecycle works end-to-end', () => {
+  it('transitions a request from streaming to completed with full metrics via startRequest and updateRequest', () => {
     const { result } = renderHook(() => useObservability(), { wrapper });
 
     const request = makeRequest({ id: 'req-lifecycle', status: 'streaming' });
@@ -300,7 +300,7 @@ describe('ObservabilityProvider + useObservability', () => {
     });
   });
 
-  it('setSystemPrompt updates state.systemPrompt', () => {
+  it('stores the system prompt text when setSystemPrompt is called', () => {
     const { result } = renderHook(() => useObservability(), { wrapper });
 
     expect(result.current.state.systemPrompt).toBeNull();
@@ -312,7 +312,7 @@ describe('ObservabilityProvider + useObservability', () => {
     expect(result.current.state.systemPrompt).toBe('You are a helpful assistant named Alice.');
   });
 
-  it('clear resets all state', () => {
+  it('resets events, requests, and system prompt to initial values when clear is called', () => {
     const { result } = renderHook(() => useObservability(), { wrapper });
 
     // Build up state
