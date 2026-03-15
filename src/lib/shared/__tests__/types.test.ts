@@ -22,14 +22,14 @@ function readSrc(relPath: string): string {
 }
 
 describe('shared types — single source of truth', () => {
-  it('exports Settings, ConversationSummary, and Message types', () => {
+  it('when the shared types module exists, it exports Settings, ConversationSummary, and Message interfaces', () => {
     const source = readSrc('src/lib/shared/types.ts');
     expect(source).toMatch(/export interface Settings\b/);
     expect(source).toMatch(/export interface ConversationSummary\b/);
     expect(source).toMatch(/export interface Message\b/);
   });
 
-  it('db.ts re-exports from shared types instead of defining its own', () => {
+  it('db.ts imports from shared types and does not define duplicate interfaces', () => {
     const source = readSrc('src/lib/server/db.ts');
     // Should import from shared types
     expect(source).toMatch(/from ['"]\.\.\/shared\/types['"]/);
@@ -39,14 +39,14 @@ describe('shared types — single source of truth', () => {
     expect(source).not.toMatch(/^export interface MessageRow\b/m);
   });
 
-  it('SettingsForm.tsx imports Settings from shared types', () => {
+  it('SettingsForm.tsx imports from shared types and does not define a local Settings interface', () => {
     const source = readSrc('src/components/settings/SettingsForm.tsx');
     expect(source).toMatch(/from ['"].*shared\/types['"]/);
     // No local Settings interface
     expect(source).not.toMatch(/^interface Settings\b/m);
   });
 
-  it('HistoryPane.tsx imports from shared types', () => {
+  it('HistoryPane.tsx imports from shared types and does not define duplicate interfaces', () => {
     const source = readSrc('src/components/layout/HistoryPane.tsx');
     expect(source).toMatch(/from ['"].*shared\/types['"]/);
     // No local Conversation or HistoryMessage interfaces

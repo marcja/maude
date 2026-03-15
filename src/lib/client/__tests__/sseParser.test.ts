@@ -54,7 +54,7 @@ async function collect(body: ReadableStream<Uint8Array>): Promise<SSEEvent[]> {
 // ---------------------------------------------------------------------------
 
 describe('parseSSEStream', () => {
-  it('yields a parsed event when a single SSE data line arrives in one chunk', async () => {
+  it('when a single SSE data line arrives in one chunk, yields the parsed event', async () => {
     const body = makeStream([
       sseChunk('data: {"type":"content_block_delta","delta":{"text":"hello"}}'),
     ]);
@@ -62,7 +62,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ type: 'content_block_delta', delta: { text: 'hello' } }]);
   });
 
-  it('yields multiple events when several SSE data lines arrive in a single chunk', async () => {
+  it('when several SSE data lines arrive in a single chunk, yields one event per line', async () => {
     const body = makeStream([
       sseChunk(
         'data: {"type":"content_block_delta","delta":{"text":"foo"}}',
@@ -76,7 +76,7 @@ describe('parseSSEStream', () => {
     ]);
   });
 
-  it('reassembles and yields an event when the JSON payload is split across two chunks', async () => {
+  it('when the JSON payload is split across two chunks, reassembles and yields the event', async () => {
     // Split the JSON payload mid-way across a chunk boundary.
     const full = 'data: {"type":"content_block_delta","delta":{"text":"split"}}';
     const mid = Math.floor(full.length / 2);
@@ -85,7 +85,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ type: 'content_block_delta', delta: { text: 'split' } }]);
   });
 
-  it('yields message_stop and then the generator returns', async () => {
+  it('when a message_stop event arrives, yields it and completes the generator', async () => {
     const body = makeStream([
       sseChunk(
         'data: {"type":"content_block_delta","delta":{"text":"t"}}',
@@ -101,7 +101,7 @@ describe('parseSSEStream', () => {
     });
   });
 
-  it('stops on [DONE] sentinel without yielding an extra event', async () => {
+  it('when [DONE] sentinel arrives, stops the generator without yielding an extra event', async () => {
     const body = makeStream([
       sseChunk(
         'data: {"type":"message_stop","conversation_id":"test-conv","usage":{"input_tokens":1,"output_tokens":1}}',
@@ -114,7 +114,7 @@ describe('parseSSEStream', () => {
     expect(events[0].type).toBe('message_stop');
   });
 
-  it('yields error events with their message and code fields intact', async () => {
+  it('when an error event arrives, yields it with message and code fields intact', async () => {
     const body = makeStream([
       sseChunk('data: {"type":"error","error":{"message":"model offline","code":"stream_error"}}'),
     ]);
@@ -124,7 +124,7 @@ describe('parseSSEStream', () => {
     ]);
   });
 
-  it('skips malformed JSON lines and continues yielding subsequent events', async () => {
+  it('when a malformed JSON line arrives, skips it and continues yielding subsequent events', async () => {
     const body = makeStream([
       sseChunk(
         'data: not-valid-json',
@@ -135,7 +135,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ type: 'content_block_delta', delta: { text: 'after' } }]);
   });
 
-  it('ignores blank and comment lines', async () => {
+  it('when blank and comment lines are present, ignores them and yields only data events', async () => {
     const body = makeStream([
       sseChunk('', ': keep-alive', 'data: {"type":"content_block_start"}', ''),
     ]);
@@ -143,7 +143,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ type: 'content_block_start' }]);
   });
 
-  it('skips non-data non-comment lines (e.g. id: fields) without yielding', async () => {
+  it('when non-data fields like id: or retry: are present, skips them without yielding', async () => {
     // SSE spec allows field lines like "id: 42" or "retry: 3000" that are not
     // "data:" lines. These must be silently skipped.
     const body = makeStream([
@@ -153,7 +153,7 @@ describe('parseSSEStream', () => {
     expect(events).toEqual([{ type: 'content_block_start' }]);
   });
 
-  it('skips non-object JSON payloads (arrays, strings, numbers)', async () => {
+  it('when the JSON payload parses to a non-object value, skips it and yields only valid events', async () => {
     // Payloads that parse to non-objects (missing 'type' field) must be skipped.
     const body = makeStream([
       sseChunk(

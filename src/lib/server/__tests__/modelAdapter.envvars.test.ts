@@ -57,7 +57,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('modelAdapter — OLLAMA_BASE_URL default', () => {
-  it('uses http://host.docker.internal:11434 when OLLAMA_BASE_URL is unset', async () => {
+  it('when OLLAMA_BASE_URL is unset, defaults to http://host.docker.internal:11434', async () => {
     // biome-ignore lint/performance/noDelete: process.env assignment converts undefined to "undefined"; delete is required to truly unset env vars
     delete process.env.OLLAMA_BASE_URL;
     const mockFetch = mockFetchResolving();
@@ -74,7 +74,7 @@ describe('modelAdapter — OLLAMA_BASE_URL default', () => {
     expect(url).toBe('http://host.docker.internal:11434/v1/chat/completions');
   });
 
-  it('uses the provided OLLAMA_BASE_URL when set', async () => {
+  it('when OLLAMA_BASE_URL is set, uses the provided value', async () => {
     process.env.OLLAMA_BASE_URL = 'http://localhost:9999';
     const mockFetch = mockFetchResolving();
     const { streamCompletion } = require('../modelAdapter') as typeof import('../modelAdapter');
@@ -96,7 +96,7 @@ describe('modelAdapter — OLLAMA_BASE_URL default', () => {
 // ---------------------------------------------------------------------------
 
 describe('modelAdapter — MODEL_NAME default', () => {
-  it('defaults to gpt-oss:20b when MODEL_NAME is unset', async () => {
+  it('when MODEL_NAME is unset, defaults to gpt-oss:20b', async () => {
     // biome-ignore lint/performance/noDelete: process.env assignment converts undefined to "undefined"; delete is required to truly unset env vars
     delete process.env.MODEL_NAME;
     const mockFetch = mockFetchResolving();
@@ -114,7 +114,7 @@ describe('modelAdapter — MODEL_NAME default', () => {
     expect(body.model).toBe('gpt-oss:20b');
   });
 
-  it('uses the provided MODEL_NAME when set', async () => {
+  it('when MODEL_NAME is set, uses the provided model name', async () => {
     process.env.MODEL_NAME = 'llama3:8b';
     const mockFetch = mockFetchResolving();
     const { streamCompletion } = require('../modelAdapter') as typeof import('../modelAdapter');
@@ -137,7 +137,7 @@ describe('modelAdapter — MODEL_NAME default', () => {
 // ---------------------------------------------------------------------------
 
 describe('modelAdapter — THINK_LEVEL parsing', () => {
-  it('sends boolean true when THINK_LEVEL is "true"', async () => {
+  it('when THINK_LEVEL is "true", sends boolean true in the request body', async () => {
     process.env.THINK_LEVEL = 'true';
     const mockFetch = mockFetchResolving();
     const { streamCompletion } = require('../modelAdapter') as typeof import('../modelAdapter');
@@ -154,7 +154,7 @@ describe('modelAdapter — THINK_LEVEL parsing', () => {
     expect(body.think).toBe(true);
   });
 
-  it('sends boolean false when THINK_LEVEL is "false"', async () => {
+  it('when THINK_LEVEL is "false", sends boolean false in the request body', async () => {
     process.env.THINK_LEVEL = 'false';
     const mockFetch = mockFetchResolving();
     const { streamCompletion } = require('../modelAdapter') as typeof import('../modelAdapter');
@@ -171,7 +171,7 @@ describe('modelAdapter — THINK_LEVEL parsing', () => {
     expect(body.think).toBe(false);
   });
 
-  it('passes through the raw string when THINK_LEVEL is a level like "high"', async () => {
+  it('when THINK_LEVEL is a level string like "high", passes it through as-is', async () => {
     process.env.THINK_LEVEL = 'high';
     const mockFetch = mockFetchResolving();
     const { streamCompletion } = require('../modelAdapter') as typeof import('../modelAdapter');
@@ -188,7 +188,7 @@ describe('modelAdapter — THINK_LEVEL parsing', () => {
     expect(body.think).toBe('high');
   });
 
-  it('defaults to "medium" when THINK_LEVEL is unset', async () => {
+  it('when THINK_LEVEL is unset, defaults to "medium"', async () => {
     // biome-ignore lint/performance/noDelete: process.env assignment converts undefined to "undefined"; delete is required to truly unset env vars
     delete process.env.THINK_LEVEL;
     const mockFetch = mockFetchResolving();

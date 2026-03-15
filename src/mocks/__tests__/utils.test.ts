@@ -10,7 +10,7 @@ import type { SSEEvent } from '../../lib/client/events';
 import { delay, encodeEvent } from '../utils';
 
 describe('encodeEvent', () => {
-  it('formats an SSE event as a "data: <json>\\n\\n" string for streaming', () => {
+  it('when given an SSE event, formats it as a "data: <json>\\n\\n" string for streaming', () => {
     const event: SSEEvent = { type: 'content_block_start' };
     expect(encodeEvent(event)).toBe(`data: ${JSON.stringify(event)}\n\n`);
   });
@@ -35,14 +35,14 @@ describe('delay', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('resolves after the specified duration', async () => {
+  it('when the specified duration elapses, resolves the promise', async () => {
     const promise = delay(500, new AbortController().signal);
     jest.advanceTimersByTime(500);
     // Promise should resolve without hanging — fake timer advanced past the delay.
     await expect(promise).resolves.toBeUndefined();
   });
 
-  it('resolves early when the signal fires mid-wait', async () => {
+  it('when the abort signal fires mid-wait, resolves early', async () => {
     const controller = new AbortController();
     const promise = delay(10_000, controller.signal);
     // Abort fires before the 10s timer — delay should resolve immediately.
@@ -50,7 +50,7 @@ describe('delay', () => {
     await expect(promise).resolves.toBeUndefined();
   });
 
-  it('resolves immediately when the signal is already aborted', async () => {
+  it('when the signal is already aborted before delay() is called, resolves immediately', async () => {
     const controller = new AbortController();
     controller.abort();
     // Signal is already aborted before delay() is called — must not wait.

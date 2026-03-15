@@ -61,7 +61,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — request shape', () => {
-  it('POSTs to /v1/chat/completions with correct headers and body', async () => {
+  it('when called, POSTs to /v1/chat/completions with correct headers and body shape', async () => {
     const mockFetch = jest.fn().mockResolvedValue(mockStreamResponse([sseChunk('data: [DONE]')]));
     jest.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
 
@@ -103,7 +103,7 @@ describe('streamCompletion — request shape', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — token streaming', () => {
-  it('yields tokens from data lines and stops at [DONE]', async () => {
+  it('when data lines contain content deltas, yields each token and stops at [DONE]', async () => {
     const chunk = sseChunk(
       'data: {"choices":[{"delta":{"content":"Hello"}}]}',
       'data: {"choices":[{"delta":{"content":" world"}}]}',
@@ -121,7 +121,7 @@ describe('streamCompletion — token streaming', () => {
     expect(tokens).toEqual(['Hello', ' world']);
   });
 
-  it('ignores delta lines with empty or missing content', async () => {
+  it('when delta lines have empty or missing content, skips them and yields only non-empty tokens', async () => {
     const chunk = sseChunk(
       'data: {"choices":[{"delta":{"content":""}}]}',
       'data: {"choices":[{"delta":{}}]}',
@@ -146,7 +146,7 @@ describe('streamCompletion — token streaming', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — partial/multi-line chunks', () => {
-  it('correctly handles two SSE lines arriving in separate chunks', async () => {
+  it('when two SSE lines arrive in separate chunks, yields both tokens correctly', async () => {
     const chunk1 = sseChunk('data: {"choices":[{"delta":{"content":"foo"}}]}');
     const chunk2 = sseChunk('data: {"choices":[{"delta":{"content":"bar"}}]}', 'data: [DONE]');
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk1, chunk2]));
@@ -167,7 +167,7 @@ describe('streamCompletion — partial/multi-line chunks', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — signal propagation', () => {
-  it('passes the caller AbortSignal to fetch', async () => {
+  it('when an AbortSignal is provided, passes it to the underlying fetch call', async () => {
     const controller = new AbortController();
     const mockFetch = jest.fn().mockResolvedValue(mockStreamResponse([sseChunk('data: [DONE]')]));
     jest.spyOn(globalThis, 'fetch').mockImplementation(mockFetch);
@@ -185,7 +185,7 @@ describe('streamCompletion — signal propagation', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — model_unreachable', () => {
-  it('throws ModelAdapterError with code model_unreachable when fetch rejects', async () => {
+  it('when fetch rejects with a network error, throws ModelAdapterError with code model_unreachable', async () => {
     jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
 
     await expect(
@@ -193,7 +193,7 @@ describe('streamCompletion — model_unreachable', () => {
     ).rejects.toMatchObject({ code: 'model_unreachable' });
   });
 
-  it('throws an instance of ModelAdapterError when fetch rejects', async () => {
+  it('when fetch rejects, the thrown error is an instance of ModelAdapterError', async () => {
     jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network error'));
 
     let caught: unknown;
@@ -211,7 +211,7 @@ describe('streamCompletion — model_unreachable', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — bad_response', () => {
-  it('throws ModelAdapterError with code bad_response on non-2xx status', async () => {
+  it('when the server returns a non-2xx status, throws ModelAdapterError with code bad_response', async () => {
     jest
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('Service Unavailable', { status: 503 }));
@@ -221,7 +221,7 @@ describe('streamCompletion — bad_response', () => {
     ).rejects.toMatchObject({ code: 'bad_response' });
   });
 
-  it('throws ModelAdapterError with code bad_response when response body is null', async () => {
+  it('when the response body is null, throws ModelAdapterError with code bad_response', async () => {
     // Simulate a 200 response whose body has been consumed/nulled. In the browser
     // a Response.body can be null after .body has been read; guard exists in
     // streamCompletion before passing the body to tokenStream.
@@ -239,7 +239,7 @@ describe('streamCompletion — bad_response', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — malformed JSON in token stream', () => {
-  it('skips malformed JSON lines and continues yielding subsequent tokens', async () => {
+  it('when a malformed JSON line appears mid-stream, skips it and continues yielding tokens', async () => {
     // One bad line sandwiched between two valid ones; the bad line must be
     // silently skipped so the surrounding tokens still arrive.
     const chunk = sseChunk(
@@ -266,7 +266,7 @@ describe('streamCompletion — malformed JSON in token stream', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — reasoning support', () => {
-  it('wraps delta.reasoning in <think> tags', async () => {
+  it('when delta.reasoning is present, wraps the reasoning text in <think> tags', async () => {
     // Ollama's /v1/chat/completions endpoint delivers thinking via
     // delta.reasoning. The adapter wraps it in <think> tags so the BFF's
     // existing tag parser handles it transparently.
@@ -286,7 +286,7 @@ describe('streamCompletion — reasoning support', () => {
     expect(tokens).toEqual(['<think>', 'I think...', '</think>']);
   });
 
-  it('also supports delta.reasoning_content (OpenAI convention)', async () => {
+  it('when delta.reasoning_content is present (OpenAI convention), wraps it in <think> tags', async () => {
     // Fallback for backends that use OpenAI's field name instead of Ollama's.
     const chunk = sseChunk(
       'data: {"choices":[{"delta":{"reasoning_content":"fallback"}}]}',
@@ -304,7 +304,7 @@ describe('streamCompletion — reasoning support', () => {
     expect(tokens).toEqual(['<think>', 'fallback', '</think>']);
   });
 
-  it('transitions from reasoning to content with proper tag closure', async () => {
+  it('when reasoning transitions to content, closes the <think> tag before emitting content', async () => {
     const chunk = sseChunk(
       'data: {"choices":[{"delta":{"reasoning":"reasoning"}}]}',
       'data: {"choices":[{"delta":{"content":"visible"}}]}',
@@ -322,7 +322,7 @@ describe('streamCompletion — reasoning support', () => {
     expect(tokens).toEqual(['<think>', 'reasoning', '</think>', 'visible']);
   });
 
-  it('passes through inline <think> tags in content without double-wrapping', async () => {
+  it('when content already contains inline <think> tags, passes them through without double-wrapping', async () => {
     // Models that inline tags directly in content should not be double-wrapped.
     const chunk = sseChunk(
       'data: {"choices":[{"delta":{"content":"<think>hello</think>world"}}]}',
@@ -340,7 +340,7 @@ describe('streamCompletion — reasoning support', () => {
     expect(tokens).toEqual(['<think>hello</think>world']);
   });
 
-  it('handles both reasoning and content in the same delta', async () => {
+  it('when both reasoning and content appear in a single delta, emits reasoning first then content', async () => {
     // Edge case: a single SSE line carries both fields. Reasoning is emitted
     // first (wrapped), then content follows.
     const chunk = sseChunk(
@@ -359,7 +359,7 @@ describe('streamCompletion — reasoning support', () => {
     expect(tokens).toEqual(['<think>', 'R', '</think>', 'C']);
   });
 
-  it('closes reasoning tag when stream ends mid-reasoning', async () => {
+  it('when the stream ends mid-reasoning at [DONE], closes the <think> tag', async () => {
     // Model sends reasoning but no content before [DONE] — the adapter must
     // close the <think> wrapper so the BFF sees a balanced tag pair.
     const chunk1 = sseChunk('data: {"choices":[{"delta":{"reasoning":"partial"}}]}');
@@ -376,7 +376,7 @@ describe('streamCompletion — reasoning support', () => {
     expect(tokens).toEqual(['<think>', 'partial', '</think>']);
   });
 
-  it('closes reasoning tag when stream ends without [DONE]', async () => {
+  it('when the stream closes without [DONE] while in a reasoning block, closes the <think> tag', async () => {
     // Guard against streams that close without a [DONE] sentinel while still
     // inside a reasoning block.
     const chunk = sseChunk('data: {"choices":[{"delta":{"reasoning":"abrupt"}}]}');
@@ -398,7 +398,7 @@ describe('streamCompletion — reasoning support', () => {
 // ---------------------------------------------------------------------------
 
 describe('streamCompletion — usage reporting', () => {
-  it('captures usage from the final chunk with stream_options.include_usage', async () => {
+  it('when the final chunk includes usage data, captures prompt and completion token counts', async () => {
     // Ollama sends a final chunk with usage data when stream_options.include_usage is true.
     const chunk = sseChunk(
       'data: {"choices":[{"delta":{"content":"hi"}}]}',
@@ -417,7 +417,7 @@ describe('streamCompletion — usage reporting', () => {
     expect(result.getUsage()).toEqual({ promptTokens: 10, completionTokens: 20 });
   });
 
-  it('returns null usage when no usage chunk is present', async () => {
+  it('when no usage chunk is present in the stream, returns null from getUsage()', async () => {
     const chunk = sseChunk('data: {"choices":[{"delta":{"content":"hi"}}]}', 'data: [DONE]');
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(mockStreamResponse([chunk]));
 
@@ -431,7 +431,7 @@ describe('streamCompletion — usage reporting', () => {
     expect(result.getUsage()).toBeNull();
   });
 
-  it('returns null usage before tokens are consumed', async () => {
+  it('when tokens have not yet been consumed, returns null from getUsage()', async () => {
     const chunk = sseChunk(
       'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":10,"total_tokens":15}}',
       'data: [DONE]'
