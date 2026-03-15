@@ -416,9 +416,9 @@ pnpm lint:fix
 
 ## Further reading
 
-- [SPEC.md](SPEC.md) -- Full specification covering architecture, UX,
+- [SPEC-v0.1.md](docs/SPEC-v0.1.md) -- Full specification covering architecture, UX,
   concurrent patterns, testing strategy, and enforcement rules
-- [TASKS.md](TASKS.md) -- Detailed build plan with 34 tasks across 5
+- [TASKS-v0.1.md](docs/TASKS-v0.1.md) -- Detailed build plan with 34 tasks across 5
   milestones, including dependencies and acceptance criteria
 - [CLAUDE.md](CLAUDE.md) -- Project constitution: non-negotiable constraints,
   TDD workflow, commit format, and quality gates

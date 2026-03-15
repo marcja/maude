@@ -6,6 +6,8 @@
 build a streaming LLM-based AI assistant. Every architectural decision optimizes for making LLM UI
 concerns visible and exercisable. Comments explain *why*, not just *what*.
 
+As-built spec: see `docs/SPEC-v1.0.md`
+
 ## Enforcement — do not bypass
 
 Hard gates run automatically. Do not use `--no-verify`. Do not suppress lint errors.
