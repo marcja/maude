@@ -60,6 +60,7 @@ Temporary Items
 
 # next.js
 /.next/
+/.swc/
 /out/
 
 # production
